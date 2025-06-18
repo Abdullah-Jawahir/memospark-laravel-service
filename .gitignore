@@ -1,0 +1,203 @@
+# Laravel Framework
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+.env
+.env.backup
+.env.production
+.env.local
+.env.*.local
+
+# Laravel specific
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
+storage/app/public/*
+!storage/app/public/.gitignore
+storage/framework/cache/*
+!storage/framework/cache/.gitignore
+storage/framework/sessions/*
+!storage/framework/sessions/.gitignore
+storage/framework/views/*
+!storage/framework/views/.gitignore
+storage/logs/*
+!storage/logs/.gitignore
+
+# Composer
+composer.phar
+composer.lock
+
+# NPM/Yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE and Editor files
+/.idea
+/.vscode
+/.fleet
+/.nova
+/.phpactor.json
+/.zed
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+.phpunit.result.cache
+/.phpunit.cache
+coverage/
+.phpunit.cache/
+
+# Homestead
+Homestead.json
+Homestead.yaml
+
+# Laravel Sail
+docker-compose.override.yml
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+
+# Cache
+cache/
+.cache/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.csr
+
+# API keys and secrets
+auth.json
+secrets.json
+*.secret
+
+# Build artifacts
+/dist
+/build
+/public/dist
+
+# Package manager lock files (keep composer.lock but ignore others)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment files
+.env.example
+.env.testing
+.env.staging
+
+# Laravel Telescope (if used)
+/storage/telescope
+
+# Laravel Horizon (if used)
+/storage/horizon
+
+# Laravel Octane (if used)
+/storage/octane
+
+# Laravel Sanctum (if used)
+/storage/sanctum
+
+# Laravel Passport (if used)
+/storage/oauth-*
+
+# Laravel Echo Server (if used)
+laravel-echo-server.json
+
+# Laravel Mix
+webpack.mix.js
+
+# Vite
+vite.config.js
+vite.config.ts
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
