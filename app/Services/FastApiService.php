@@ -44,7 +44,9 @@ class FastApiService
         throw new \Exception('Failed to process file: ' . $response->body());
       }
 
-      return $response->json();
+      $json = $response->json();
+      Log::info('FastAPI raw response', ['json' => $json]);
+      return $json;
     } catch (\Exception $e) {
       Log::error('Error processing file with FastAPI', [
         'error' => $e->getMessage(),

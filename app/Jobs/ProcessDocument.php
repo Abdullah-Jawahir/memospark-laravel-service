@@ -64,9 +64,36 @@ class ProcessDocument implements ShouldQueue
                 'status' => 'completed',
                 'metadata' => array_merge($document->metadata, [
                     'processed_at' => now(),
-                    'generated_cards' => $result['generated_cards'] ?? []
+                    'generated_content' => $result['generated_content'] ?? []
                 ])
             ]);
+
+            // Save study materials for authenticated users only (new format)
+            if ($document->user_id && !empty($result['generated_content'])) {
+                $content = $result['generated_content'];
+                // Save flashcards
+                if (!empty($content['flashcards'])) {
+                    foreach ($content['flashcards'] as $card) {
+                        \App\Models\StudyMaterial::create([
+                            'document_id' => $document->id,
+                            'type' => 'flashcard',
+                            'content' => $card,
+                            'language' => $this->language,
+                        ]);
+                    }
+                }
+                // Save quizzes
+                if (!empty($content['quizzes'])) {
+                    foreach ($content['quizzes'] as $quiz) {
+                        \App\Models\StudyMaterial::create([
+                            'document_id' => $document->id,
+                            'type' => 'quiz',
+                            'content' => $quiz,
+                            'language' => $this->language,
+                        ]);
+                    }
+                }
+            }
 
             // Clean up temporary file
             unlink($tempPath);

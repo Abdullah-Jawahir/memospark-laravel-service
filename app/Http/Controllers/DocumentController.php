@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessDocument;
 use App\Models\Document;
+use App\Models\GuestUpload;
 use App\Services\FastApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -60,6 +61,15 @@ class DocumentController extends Controller
       ]
     ]);
 
+    // If this is a guest upload, track it
+    if ($isGuest && $request->has('guest_identifier')) {
+      GuestUpload::createGuestUpload(
+        $request->guest_identifier,
+        $document->id,
+        'ip'
+      );
+    }
+
     // Process the document asynchronously
     ProcessDocument::dispatch(
       $document->id,
@@ -70,7 +80,8 @@ class DocumentController extends Controller
 
     return response()->json([
       'message' => 'File uploaded successfully',
-      'document_id' => $document->id
+      'document_id' => $document->id,
+      'is_guest' => $isGuest
     ]);
   }
 
