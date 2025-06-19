@@ -24,4 +24,9 @@ class StudyMaterial extends Model
   {
     return $this->belongsTo(Document::class);
   }
+
+  public function reviews()
+  {
+    return $this->hasMany(FlashcardReview::class);
+  }
 }

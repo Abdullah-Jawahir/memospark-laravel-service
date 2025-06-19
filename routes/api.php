@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FlashcardController;
+use App\Http\Controllers\FlashcardReviewController;
 use App\Http\Middleware\SupabaseAuth;
 
 /*
@@ -37,3 +38,8 @@ Route::middleware(['throttle:api', 'guest.document.status'])->group(function () 
 });
 
 Route::post('/flashcards/process', [FlashcardController::class, 'processFile']);
+
+Route::middleware(['throttle:api', SupabaseAuth::class])->group(function () {
+  Route::post('/flashcard-reviews', [FlashcardReviewController::class, 'store']);
+  Route::get('/flashcard-reviews', [FlashcardReviewController::class, 'index']);
+});
