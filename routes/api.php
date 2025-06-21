@@ -6,6 +6,10 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FlashcardController;
 use App\Http\Controllers\FlashcardReviewController;
 use App\Http\Middleware\SupabaseAuth;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeckController;
+use App\Http\Controllers\UserGoalController;
+use App\Http\Controllers\UserAchievementController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,4 +46,15 @@ Route::post('/flashcards/process', [FlashcardController::class, 'processFile']);
 Route::middleware(['throttle:api', SupabaseAuth::class])->group(function () {
   Route::post('/flashcard-reviews', [FlashcardReviewController::class, 'store']);
   Route::get('/flashcard-reviews', [FlashcardReviewController::class, 'index']);
+});
+
+Route::middleware('supabase')->group(function () {
+  Route::get('dashboard/overview', [DashboardController::class, 'overview']);
+  Route::get('dashboard/recent-decks', [DashboardController::class, 'recentDecks']);
+  Route::get('dashboard/todays-goal', [DashboardController::class, 'todaysGoal']);
+  Route::get('dashboard/achievements', [DashboardController::class, 'achievements']);
+
+  Route::post('decks', [DeckController::class, 'store']);
+  Route::post('user-goals', [UserGoalController::class, 'store']);
+  Route::post('user-achievements', [UserAchievementController::class, 'store']);
 });
