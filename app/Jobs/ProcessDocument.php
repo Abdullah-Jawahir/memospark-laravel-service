@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class ProcessDocument implements ShouldQueue
 {
@@ -19,16 +20,20 @@ class ProcessDocument implements ShouldQueue
     protected $filePath;
     protected $originalFilename;
     protected $language;
+    protected $cardTypes;
+    protected $difficulty;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($documentId, $filePath, $originalFilename, $language)
+    public function __construct($documentId, $filePath, $originalFilename, $language, $cardTypes = ['flashcard'], $difficulty = 'beginner')
     {
         $this->documentId = $documentId;
         $this->filePath = $filePath;
         $this->originalFilename = $originalFilename;
         $this->language = $language;
+        $this->cardTypes = $cardTypes;
+        $this->difficulty = $difficulty;
     }
 
     /**
@@ -58,7 +63,7 @@ class ProcessDocument implements ShouldQueue
             );
 
             // Process the document using FastAPI service
-            $result = $fastApiService->processFile($uploadedFile, $this->language);
+            $result = $fastApiService->processFile($uploadedFile, $this->language, $this->cardTypes, $this->difficulty);
 
             $document->update([
                 'status' => 'completed',
@@ -93,11 +98,32 @@ class ProcessDocument implements ShouldQueue
                         ]);
                     }
                 }
+                // Save exercises
+                if (!empty($content['exercises'])) {
+                    foreach ($content['exercises'] as $exercise) {
+                        \App\Models\StudyMaterial::create([
+                            'document_id' => $document->id,
+                            'type' => 'exercise',
+                            'content' => $exercise,
+                            'language' => $this->language,
+                        ]);
+                    }
+                }
             }
 
             // Clean up temporary file
             unlink($tempPath);
         } catch (\Exception $e) {
+            Log::channel('fastapi')->error('ProcessDocument job failed', [
+                'document_id' => $this->documentId,
+                'file_path' => $this->filePath,
+                'original_filename' => $this->originalFilename,
+                'language' => $this->language,
+                'card_types' => $this->cardTypes,
+                'difficulty' => $this->difficulty,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             $document->update([
                 'status' => 'failed',
                 'metadata' => array_merge($document->metadata, [

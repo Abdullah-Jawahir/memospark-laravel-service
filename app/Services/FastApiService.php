@@ -20,39 +20,77 @@ class FastApiService
    *
    * @param UploadedFile $file
    * @param string $language
+   * @param array $cardTypes
+   * @param string $difficulty
    * @return array
    * @throws \Exception
    */
-  public function processFile(UploadedFile $file, string $language = 'en')
+  public function processFile(UploadedFile $file, string $language = 'en', array $cardTypes = ['flashcard'], string $difficulty = 'beginner')
   {
     try {
-      $response = Http::timeout(120) // 2 minutes timeout
+      // Log basic input details
+      Log::channel('fastapi')->info('processFile called', [
+        'filename' => $file->getClientOriginalName(),
+        'language' => $language,
+        'card_types' => $cardTypes,
+        'difficulty' => $difficulty,
+        'mime_type' => $file->getMimeType(),
+        'size' => $file->getSize(),
+      ]);
+
+      // Prepare multipart form fields
+      $formData = collect($cardTypes)->map(function ($type) {
+        return ['name' => 'card_types', 'contents' => $type];
+      })->prepend(
+        ['name' => 'language', 'contents' => $language]
+      )->push(
+        ['name' => 'difficulty', 'contents' => $difficulty]
+      )->all();
+
+      Log::channel('fastapi')->info('Preparing to send request to FastAPI', [
+        'url' => "{$this->baseUrl}/process-file",
+        'form_data' => $formData,
+        'file_attached' => $file->getClientOriginalName()
+      ]);
+
+      // Send request to FastAPI
+      $response = Http::timeout(120)
+        ->asMultipart()
         ->attach(
           'file',
           file_get_contents($file->getRealPath()),
           $file->getClientOriginalName(),
           ['Content-Type' => $file->getMimeType()]
-        )->post("{$this->baseUrl}/process-file", [
-          'language' => $language
-        ]);
+        )->post("{$this->baseUrl}/process-file", $formData);
 
+      Log::channel('fastapi')->info('FastAPI response received', [
+        'status' => $response->status(),
+        'body' => $response->body()
+      ]);
+
+      // Handle errors
       if ($response->failed()) {
-        Log::error('FastAPI request failed', [
+        $msg = 'Failed to process file: HTTP ' . $response->status() . ' - ' . $response->body();
+        Log::channel('fastapi')->error('FastAPI request failed', [
           'status' => $response->status(),
-          'body' => $response->body()
+          'body' => $response->body(),
+          'error' => $msg
         ]);
-        throw new \Exception('Failed to process file: ' . $response->body());
+        throw new \Exception($msg);
       }
 
+      // Decode and return response
       $json = $response->json();
-      Log::info('FastAPI raw response', ['json' => $json]);
+      Log::channel('fastapi')->info('FastAPI JSON decoded', ['json' => $json]);
+
       return $json;
     } catch (\Exception $e) {
-      Log::error('Error processing file with FastAPI', [
-        'error' => $e->getMessage(),
-        'file' => $file->getClientOriginalName()
+      $errorMsg = $e->getMessage() ?: 'Could not connect to FastAPI server';
+      Log::channel('fastapi')->error('Exception thrown in FastApiService', [
+        'error' => $errorMsg,
+        'trace' => $e->getTraceAsString(),
       ]);
-      throw $e;
+      throw new \Exception('FastApiService exception: ' . $errorMsg, 0, $e);
     }
   }
 }

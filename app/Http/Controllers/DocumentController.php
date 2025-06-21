@@ -9,6 +9,7 @@ use App\Services\FastApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class DocumentController extends Controller
 {
@@ -24,7 +25,11 @@ class DocumentController extends Controller
     $request->validate([
       'file' => 'required|file|mimes:pdf,docx,pptx,jpg,jpeg,png|max:10240', // 10MB max
       'language' => 'required|in:en,si,ta',
-      'is_guest' => 'required|in:0,1,true,false'
+      'is_guest' => 'required|in:0,1,true,false',
+      'deck_name' => 'required|string|max:255',
+      'card_types' => 'nullable|array',
+      'card_types.*' => 'in:flashcard,exercise,quiz',
+      'difficulty' => 'nullable|in:beginner,intermediate,advanced'
     ]);
 
     $file = $request->file('file');
@@ -46,9 +51,27 @@ class DocumentController extends Controller
       $userId = $request->supabase_user['id'];
     }
 
+    // Create or find deck for the user
+    $deck = null;
+    if ($userId) {
+      $deck = \App\Models\Deck::firstOrCreate([
+        'user_id' => $userId,
+        'name' => $request->deck_name
+      ]);
+    }
+
+    // Default card types if not provided
+    $cardTypes = $request->card_types ?? ['flashcard'];
+    if (empty($cardTypes)) {
+      $cardTypes = ['flashcard'];
+    }
+
+    $difficulty = $request->difficulty ?? 'beginner';
+
     // Create document record
     $document = Document::create([
       'user_id' => $userId,
+      'deck_id' => $deck ? $deck->id : null,
       'original_filename' => $originalFilename,
       'storage_path' => $path,
       'file_type' => $extension,
@@ -57,7 +80,10 @@ class DocumentController extends Controller
       'metadata' => [
         'size' => $file->getSize(),
         'mime_type' => $file->getMimeType(),
-        'is_guest' => $isGuest
+        'is_guest' => $isGuest,
+        'deck_name' => $request->deck_name,
+        'card_types' => $cardTypes,
+        'difficulty' => $difficulty
       ]
     ]);
 
@@ -70,13 +96,15 @@ class DocumentController extends Controller
       );
     }
 
-    // Process the document asynchronously
+    // Process the document asynchronously, pass card_types and difficulty
     ProcessDocument::dispatch(
       $document->id,
       $path,
       $originalFilename,
-      $request->language
-    );
+      $request->language,
+      $cardTypes,
+      $difficulty
+    )->delay(now()->addSeconds(20));
 
     return response()->json([
       'message' => 'File uploaded successfully',
@@ -87,11 +115,26 @@ class DocumentController extends Controller
 
   public function status($id)
   {
-    $document = Document::findOrFail($id);
-
-    return response()->json([
-      'status' => $document->status,
-      'metadata' => $document->metadata
+    Log::channel('fastapi')->info('Document status check called', [
+      'document_id' => $id
     ]);
+    try {
+      $document = Document::findOrFail($id);
+      Log::channel('fastapi')->info('Document status found', [
+        'document_id' => $id,
+        'status' => $document->status,
+        'metadata' => $document->metadata
+      ]);
+      return response()->json([
+        'status' => $document->status,
+        'metadata' => $document->metadata
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in document status check', [
+        'document_id' => $id,
+        'error' => $e->getMessage()
+      ]);
+      throw $e;
+    }
   }
 }
