@@ -48,7 +48,7 @@ class FastApiService
       )->all();
 
       Log::channel('fastapi')->info('Preparing to send request to FastAPI', [
-        'url' => "{$this->baseUrl}/process-file",
+        'url' => "{$this->baseUrl}/api/v1/process-file",
         'form_data' => $formData,
         'file_attached' => $file->getClientOriginalName()
       ]);
@@ -61,7 +61,7 @@ class FastApiService
           file_get_contents($file->getRealPath()),
           $file->getClientOriginalName(),
           ['Content-Type' => $file->getMimeType()]
-        )->post("{$this->baseUrl}/process-file", $formData);
+        )->post("{$this->baseUrl}/api/v1/process-file", $formData);
 
       Log::channel('fastapi')->info('FastAPI response received', [
         'status' => $response->status(),
