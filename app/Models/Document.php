@@ -12,6 +12,7 @@ class Document extends Model
 
   protected $fillable = [
     'user_id',
+    'deck_id',
     'original_filename',
     'storage_path',
     'file_type',
@@ -27,6 +28,11 @@ class Document extends Model
   public function user()
   {
     return $this->belongsTo(User::class);
+  }
+
+  public function deck()
+  {
+    return $this->belongsTo(Deck::class);
   }
 
   public function guestUpload()
