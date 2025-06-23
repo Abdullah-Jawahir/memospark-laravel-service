@@ -54,7 +54,7 @@ class FastApiService
       ]);
 
       // Send request to FastAPI
-      $response = Http::timeout(120)
+      $response = Http::timeout(500)
         ->asMultipart()
         ->attach(
           'file',
