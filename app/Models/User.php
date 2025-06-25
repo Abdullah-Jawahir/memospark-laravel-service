@@ -45,4 +45,29 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function decks()
+    {
+        return $this->hasMany(Deck::class);
+    }
+
+    public function userGoals()
+    {
+        return $this->hasMany(UserGoal::class);
+    }
+
+    public function achievements()
+    {
+        return $this->belongsToMany(Achievement::class, 'user_achievements')->withTimestamps()->withPivot('achieved_at');
+    }
+
+    public function flashcardReviews()
+    {
+        return $this->hasMany(FlashcardReview::class);
+    }
+
+    public function studyMaterials()
+    {
+        return $this->hasManyThrough(StudyMaterial::class, Deck::class);
+    }
 }

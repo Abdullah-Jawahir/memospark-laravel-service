@@ -4,12 +4,14 @@ namespace App\Jobs;
 
 use App\Models\Document;
 use App\Services\FastApiService;
+use App\Services\FileProcessCacheService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class ProcessDocument implements ShouldQueue
 {
@@ -19,22 +21,26 @@ class ProcessDocument implements ShouldQueue
     protected $filePath;
     protected $originalFilename;
     protected $language;
+    protected $cardTypes;
+    protected $difficulty;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($documentId, $filePath, $originalFilename, $language)
+    public function __construct($documentId, $filePath, $originalFilename, $language, $cardTypes = ['flashcard'], $difficulty = 'beginner')
     {
         $this->documentId = $documentId;
         $this->filePath = $filePath;
         $this->originalFilename = $originalFilename;
         $this->language = $language;
+        $this->cardTypes = $cardTypes;
+        $this->difficulty = $difficulty;
     }
 
     /**
      * Execute the job.
      */
-    public function handle(FastApiService $fastApiService): void
+    public function handle(FastApiService $fastApiService, FileProcessCacheService $fileProcessCacheService): void
     {
         $document = Document::find($this->documentId);
 
@@ -48,29 +54,83 @@ class ProcessDocument implements ShouldQueue
             $fileContents = Storage::disk('private')->get($this->filePath);
             file_put_contents($tempPath, $fileContents);
 
-            // Create a mock UploadedFile for the FastAPI service
-            $uploadedFile = new \Illuminate\Http\UploadedFile(
+            // Use the service to process and cache
+            $cacheResult = $fileProcessCacheService->processAndCacheFile(
                 $tempPath,
                 $this->originalFilename,
-                mime_content_type($tempPath),
-                null,
-                true
+                $this->language,
+                $this->cardTypes,
+                $this->difficulty
             );
 
-            // Process the document using FastAPI service
-            $result = $fastApiService->processFile($uploadedFile, $this->language);
+            if ($cacheResult['status'] === 'done') {
+                $document->update([
+                    'status' => 'completed',
+                    'metadata' => array_merge($document->metadata, [
+                        'processed_at' => now(),
+                        'generated_content' => $cacheResult['result'] ?? []
+                    ])
+                ]);
+            } elseif ($cacheResult['status'] === 'failed') {
+                $document->update([
+                    'status' => 'failed',
+                    'metadata' => array_merge($document->metadata, [
+                        'error' => $cacheResult['message']
+                    ])
+                ]);
+            }
 
-            $document->update([
-                'status' => 'completed',
-                'metadata' => array_merge($document->metadata, [
-                    'processed_at' => now(),
-                    'generated_cards' => $result['generated_cards'] ?? []
-                ])
-            ]);
+            // Save study materials for authenticated users only (new format)
+            if ($document->user_id && !empty($cacheResult['result'])) {
+                $content = $cacheResult['result'];
+                // Save flashcards
+                if (!empty($content['flashcards'])) {
+                    foreach ($content['flashcards'] as $card) {
+                        \App\Models\StudyMaterial::create([
+                            'document_id' => $document->id,
+                            'type' => 'flashcard',
+                            'content' => $card,
+                            'language' => $this->language,
+                        ]);
+                    }
+                }
+                // Save quizzes
+                if (!empty($content['quizzes'])) {
+                    foreach ($content['quizzes'] as $quiz) {
+                        \App\Models\StudyMaterial::create([
+                            'document_id' => $document->id,
+                            'type' => 'quiz',
+                            'content' => $quiz,
+                            'language' => $this->language,
+                        ]);
+                    }
+                }
+                // Save exercises
+                if (!empty($content['exercises'])) {
+                    foreach ($content['exercises'] as $exercise) {
+                        \App\Models\StudyMaterial::create([
+                            'document_id' => $document->id,
+                            'type' => 'exercise',
+                            'content' => $exercise,
+                            'language' => $this->language,
+                        ]);
+                    }
+                }
+            }
 
             // Clean up temporary file
             unlink($tempPath);
         } catch (\Exception $e) {
+            Log::channel('fastapi')->error('ProcessDocument job failed', [
+                'document_id' => $this->documentId,
+                'file_path' => $this->filePath,
+                'original_filename' => $this->originalFilename,
+                'language' => $this->language,
+                'card_types' => $this->cardTypes,
+                'difficulty' => $this->difficulty,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             $document->update([
                 'status' => 'failed',
                 'metadata' => array_merge($document->metadata, [
