@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Document;
 use App\Services\FastApiService;
+use App\Services\FileProcessCacheService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -39,7 +40,7 @@ class ProcessDocument implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(FastApiService $fastApiService): void
+    public function handle(FastApiService $fastApiService, FileProcessCacheService $fileProcessCacheService): void
     {
         $document = Document::find($this->documentId);
 
@@ -53,29 +54,35 @@ class ProcessDocument implements ShouldQueue
             $fileContents = Storage::disk('private')->get($this->filePath);
             file_put_contents($tempPath, $fileContents);
 
-            // Create a mock UploadedFile for the FastAPI service
-            $uploadedFile = new \Illuminate\Http\UploadedFile(
+            // Use the service to process and cache
+            $cacheResult = $fileProcessCacheService->processAndCacheFile(
                 $tempPath,
                 $this->originalFilename,
-                mime_content_type($tempPath),
-                null,
-                true
+                $this->language,
+                $this->cardTypes,
+                $this->difficulty
             );
 
-            // Process the document using FastAPI service
-            $result = $fastApiService->processFile($uploadedFile, $this->language, $this->cardTypes, $this->difficulty);
-
-            $document->update([
-                'status' => 'completed',
-                'metadata' => array_merge($document->metadata, [
-                    'processed_at' => now(),
-                    'generated_content' => $result['generated_content'] ?? []
-                ])
-            ]);
+            if ($cacheResult['status'] === 'done') {
+                $document->update([
+                    'status' => 'completed',
+                    'metadata' => array_merge($document->metadata, [
+                        'processed_at' => now(),
+                        'generated_content' => $cacheResult['result'] ?? []
+                    ])
+                ]);
+            } elseif ($cacheResult['status'] === 'failed') {
+                $document->update([
+                    'status' => 'failed',
+                    'metadata' => array_merge($document->metadata, [
+                        'error' => $cacheResult['message']
+                    ])
+                ]);
+            }
 
             // Save study materials for authenticated users only (new format)
-            if ($document->user_id && !empty($result['generated_content'])) {
-                $content = $result['generated_content'];
+            if ($document->user_id && !empty($cacheResult['result'])) {
+                $content = $cacheResult['result'];
                 // Save flashcards
                 if (!empty($content['flashcards'])) {
                     foreach ($content['flashcards'] as $card) {

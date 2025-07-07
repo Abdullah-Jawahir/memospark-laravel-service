@@ -6,6 +6,7 @@ use App\Jobs\ProcessDocument;
 use App\Models\Document;
 use App\Models\GuestUpload;
 use App\Services\FastApiService;
+use App\Services\FileProcessCacheService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -14,10 +15,12 @@ use Illuminate\Support\Facades\Log;
 class DocumentController extends Controller
 {
   protected $fastApiService;
+  protected $fileProcessCacheService;
 
-  public function __construct(FastApiService $fastApiService)
+  public function __construct(FastApiService $fastApiService, FileProcessCacheService $fileProcessCacheService)
   {
     $this->fastApiService = $fastApiService;
+    $this->fileProcessCacheService = $fileProcessCacheService;
   }
 
   public function upload(Request $request)
@@ -33,25 +36,51 @@ class DocumentController extends Controller
     ]);
 
     $file = $request->file('file');
+    $cardTypes = $request->card_types ?? ['flashcard'];
+    if (empty($cardTypes)) {
+      $cardTypes = ['flashcard'];
+    }
+    $difficulty = $request->difficulty ?? 'beginner';
+    $language = $request->language;
+
+    // Check cache before proceeding
+    $cacheResult = $this->fileProcessCacheService->checkOrProcessFile($file, $language, $cardTypes, $difficulty);
+    if ($cacheResult['status'] === 'done') {
+      return response()->json([
+        'message' => 'File already processed',
+        'status' => 'done',
+        'result' => $cacheResult['result'],
+        'file_hash' => $cacheResult['file_hash'],
+        'card_types_hash' => $cacheResult['card_types_hash'],
+      ]);
+    }
+    if ($cacheResult['status'] === 'processing') {
+      return response()->json([
+        'message' => $cacheResult['message'],
+        'status' => 'processing',
+        'file_hash' => $cacheResult['file_hash'],
+        'card_types_hash' => $cacheResult['card_types_hash'],
+      ], 202);
+    }
+    if ($cacheResult['status'] === 'failed') {
+      return response()->json([
+        'message' => $cacheResult['message'],
+        'status' => 'failed',
+        'file_hash' => $cacheResult['file_hash'],
+        'card_types_hash' => $cacheResult['card_types_hash'],
+      ], 500);
+    }
+
+    // If not cached, proceed with document creation and job dispatch
     $originalFilename = $file->getClientOriginalName();
     $extension = $file->getClientOriginalExtension();
-
-    // Generate a unique filename
-    $filename = Str::uuid() . '.' . $extension;
-
-    // Store the file
+    $filename = \Illuminate\Support\Str::uuid() . '.' . $extension;
     $path = $file->storeAs('documents', $filename, 'private');
-
-    // Convert is_guest to boolean
     $isGuest = filter_var($request->is_guest, FILTER_VALIDATE_BOOLEAN);
-
-    // Get user ID from Supabase if authenticated
     $userId = null;
     if (!$isGuest && $request->has('supabase_user')) {
       $userId = $request->supabase_user['id'];
     }
-
-    // Create or find deck for the user
     $deck = null;
     if ($userId) {
       $deck = \App\Models\Deck::firstOrCreate([
@@ -59,23 +88,13 @@ class DocumentController extends Controller
         'name' => $request->deck_name
       ]);
     }
-
-    // Default card types if not provided
-    $cardTypes = $request->card_types ?? ['flashcard'];
-    if (empty($cardTypes)) {
-      $cardTypes = ['flashcard'];
-    }
-
-    $difficulty = $request->difficulty ?? 'beginner';
-
-    // Create document record
     $document = Document::create([
       'user_id' => $userId,
       'deck_id' => $deck ? $deck->id : null,
       'original_filename' => $originalFilename,
       'storage_path' => $path,
       'file_type' => $extension,
-      'language' => $request->language,
+      'language' => $language,
       'status' => 'processing',
       'metadata' => [
         'size' => $file->getSize(),
@@ -86,8 +105,6 @@ class DocumentController extends Controller
         'difficulty' => $difficulty
       ]
     ]);
-
-    // If this is a guest upload, track it
     if ($isGuest && $request->has('guest_identifier')) {
       GuestUpload::createGuestUpload(
         $request->guest_identifier,
@@ -95,21 +112,21 @@ class DocumentController extends Controller
         'ip'
       );
     }
-
-    // Process the document asynchronously, pass card_types and difficulty
     ProcessDocument::dispatch(
       $document->id,
       $path,
       $originalFilename,
-      $request->language,
+      $language,
       $cardTypes,
       $difficulty
     )->delay(now()->addSeconds(20));
-
     return response()->json([
       'message' => 'File uploaded successfully',
       'document_id' => $document->id,
-      'is_guest' => $isGuest
+      'is_guest' => $isGuest,
+      'file_hash' => $cacheResult['file_hash'],
+      'card_types_hash' => $cacheResult['card_types_hash'],
+      'status' => 'processing'
     ]);
   }
 
