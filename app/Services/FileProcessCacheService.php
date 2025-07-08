@@ -16,10 +16,10 @@ class FileProcessCacheService
   }
 
   /**
-   * Check cache or process file if not cached (for controllers)
+   * Check cache entry (for controllers)
    * Returns: [status, result|null, message|null, file_hash, card_types_hash]
    */
-  public function checkOrProcessFile(UploadedFile $file, string $language, array $cardTypes, string $difficulty = 'beginner')
+  public function checkCacheEntry(UploadedFile $file, string $language, array $cardTypes, string $difficulty = 'beginner')
   {
     sort($cardTypes);
     $cardTypesJson = json_encode($cardTypes);
@@ -64,39 +64,14 @@ class FileProcessCacheService
         }
       }
 
-      // Not cached, create entry and process
-      $cache = FileProcessCache::create([
+      // Not cached, do not create entry, just return not_cached status
+      return [
+        'status' => 'not_cached',
+        'result' => null,
+        'message' => 'No cache entry found.',
         'file_hash' => $fileHash,
-        'language' => $language,
-        'difficulty' => $difficulty,
-        'card_types' => $cardTypes,
         'card_types_hash' => $cardTypesHash,
-        'status' => 'processing',
-      ]);
-
-      try {
-        $result = $this->fastApiService->processFile($file, $language, $cardTypes, $difficulty);
-        $cache->update([
-          'result' => $result,
-          'status' => 'done',
-        ]);
-        return [
-          'status' => 'done',
-          'result' => $result['generated_cards'] ?? $result,
-          'message' => null,
-          'file_hash' => $fileHash,
-          'card_types_hash' => $cardTypesHash,
-        ];
-      } catch (\Exception $e) {
-        $cache->update(['status' => 'failed']);
-        return [
-          'status' => 'failed',
-          'result' => null,
-          'message' => $e->getMessage(),
-          'file_hash' => $fileHash,
-          'card_types_hash' => $cardTypesHash,
-        ];
-      }
+      ];
     });
   }
 
@@ -119,37 +94,33 @@ class FileProcessCacheService
         'card_types_hash' => $cardTypesHash,
       ])->lockForUpdate()->first();
 
-      if ($cache && $cache->status === 'done') {
+      if (!$cache) {
+        // Do not create cache entry here; return failed status
+        return [
+          'status' => 'failed',
+          'result' => null,
+          'message' => 'Cache entry not found. It should have been created before job dispatch.',
+        ];
+      }
+
+      if ($cache->status === 'done') {
         return [
           'status' => 'done',
           'result' => $cache->result['generated_cards'] ?? $cache->result,
           'message' => null,
         ];
       }
-      if ($cache && $cache->status === 'processing') {
-        return [
-          'status' => 'processing',
-          'result' => null,
-          'message' => 'Processing in progress. Please try again later.',
-        ];
+      if ($cache->status === 'processing') {
+        // continue to process
       }
-      if ($cache && $cache->status === 'failed') {
+      if ($cache->status === 'failed') {
+        // Optionally allow re-processing, or return failed
         return [
           'status' => 'failed',
           'result' => null,
           'message' => 'Processing failed. Please try again.',
         ];
       }
-
-      // Not cached, create entry and process
-      $cache = FileProcessCache::create([
-        'file_hash' => $fileHash,
-        'language' => $language,
-        'difficulty' => $difficulty,
-        'card_types' => $cardTypes,
-        'card_types_hash' => $cardTypesHash,
-        'status' => 'processing',
-      ]);
 
       try {
         // Create UploadedFile from path

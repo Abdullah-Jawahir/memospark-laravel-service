@@ -68,7 +68,7 @@ class ProcessDocument implements ShouldQueue
                     'status' => 'completed',
                     'metadata' => array_merge($document->metadata, [
                         'processed_at' => now(),
-                        'generated_content' => $cacheResult['result'] ?? []
+                        'generated_content' => $cacheResult['result']['generated_content'] ?? $cacheResult['result'] ?? []
                     ])
                 ]);
             } elseif ($cacheResult['status'] === 'failed') {

@@ -44,7 +44,7 @@ class DocumentController extends Controller
     $language = $request->language;
 
     // Check cache before proceeding
-    $cacheResult = $this->fileProcessCacheService->checkOrProcessFile($file, $language, $cardTypes, $difficulty);
+    $cacheResult = $this->fileProcessCacheService->checkCacheEntry($file, $language, $cardTypes, $difficulty);
     if ($cacheResult['status'] === 'done') {
       return response()->json([
         'message' => 'File already processed',
@@ -74,7 +74,7 @@ class DocumentController extends Controller
     // If not cached, proceed with document creation and job dispatch
     $originalFilename = $file->getClientOriginalName();
     $extension = $file->getClientOriginalExtension();
-    $filename = \Illuminate\Support\Str::uuid() . '.' . $extension;
+    $filename = Str::uuid() . '.' . $extension;
     $path = $file->storeAs('documents', $filename, 'private');
     $isGuest = filter_var($request->is_guest, FILTER_VALIDATE_BOOLEAN);
     $userId = null;
@@ -120,6 +120,19 @@ class DocumentController extends Controller
       $cardTypes,
       $difficulty
     )->delay(now()->addSeconds(20));
+
+    // If cache was not found, create it
+    if ($cacheResult['status'] === 'not_cached') {
+      \App\Models\FileProcessCache::create([
+        'file_hash' => $cacheResult['file_hash'],
+        'language' => $language,
+        'difficulty' => $difficulty,
+        'card_types' => $cardTypes,
+        'card_types_hash' => $cacheResult['card_types_hash'],
+        'status' => 'processing',
+      ]);
+    }
+
     return response()->json([
       'message' => 'File uploaded successfully',
       'document_id' => $document->id,
@@ -142,9 +155,29 @@ class DocumentController extends Controller
         'status' => $document->status,
         'metadata' => $document->metadata
       ]);
+
+      // Try to get the related FileProcessCache entry (if any)
+      $file_hash = $document->metadata['file_hash'] ?? null;
+      $card_types_hash = $document->metadata['card_types_hash'] ?? null;
+      $language = $document->language;
+      $difficulty = $document->metadata['difficulty'] ?? null;
+      $cache_status = null;
+      if ($file_hash && $card_types_hash && $language && $difficulty) {
+        $cache = \App\Models\FileProcessCache::where([
+          'file_hash' => $file_hash,
+          'language' => $language,
+          'difficulty' => $difficulty,
+          'card_types_hash' => $card_types_hash,
+        ])->first();
+        if ($cache) {
+          $cache_status = $cache->status;
+        }
+      }
+
       return response()->json([
         'status' => $document->status,
-        'metadata' => $document->metadata
+        'metadata' => $document->metadata,
+        'cache_status' => $cache_status,
       ]);
     } catch (\Exception $e) {
       Log::channel('fastapi')->error('Error in document status check', [
