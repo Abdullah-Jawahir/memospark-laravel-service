@@ -43,35 +43,6 @@ class DocumentController extends Controller
     $difficulty = $request->difficulty ?? 'beginner';
     $language = $request->language;
 
-    // Check cache before proceeding
-    $cacheResult = $this->fileProcessCacheService->checkCacheEntry($file, $language, $cardTypes, $difficulty);
-    if ($cacheResult['status'] === 'done') {
-      return response()->json([
-        'message' => 'File already processed',
-        'status' => 'done',
-        'result' => $cacheResult['result'],
-        'file_hash' => $cacheResult['file_hash'],
-        'card_types_hash' => $cacheResult['card_types_hash'],
-      ]);
-    }
-    if ($cacheResult['status'] === 'processing') {
-      return response()->json([
-        'message' => $cacheResult['message'],
-        'status' => 'processing',
-        'file_hash' => $cacheResult['file_hash'],
-        'card_types_hash' => $cacheResult['card_types_hash'],
-      ], 202);
-    }
-    if ($cacheResult['status'] === 'failed') {
-      return response()->json([
-        'message' => $cacheResult['message'],
-        'status' => 'failed',
-        'file_hash' => $cacheResult['file_hash'],
-        'card_types_hash' => $cacheResult['card_types_hash'],
-      ], 500);
-    }
-
-    // If not cached, proceed with document creation and job dispatch
     $originalFilename = $file->getClientOriginalName();
     $extension = $file->getClientOriginalExtension();
     $filename = Str::uuid() . '.' . $extension;
@@ -112,6 +83,7 @@ class DocumentController extends Controller
         'ip'
       );
     }
+    // Dispatch the job to handle all processing, caching, and study material creation
     ProcessDocument::dispatch(
       $document->id,
       $path,
@@ -121,24 +93,10 @@ class DocumentController extends Controller
       $difficulty
     )->delay(now()->addSeconds(20));
 
-    // If cache was not found, create it
-    if ($cacheResult['status'] === 'not_cached') {
-      \App\Models\FileProcessCache::create([
-        'file_hash' => $cacheResult['file_hash'],
-        'language' => $language,
-        'difficulty' => $difficulty,
-        'card_types' => $cardTypes,
-        'card_types_hash' => $cacheResult['card_types_hash'],
-        'status' => 'processing',
-      ]);
-    }
-
     return response()->json([
       'message' => 'File uploaded successfully',
       'document_id' => $document->id,
       'is_guest' => $isGuest,
-      'file_hash' => $cacheResult['file_hash'],
-      'card_types_hash' => $cacheResult['card_types_hash'],
       'status' => 'processing'
     ]);
   }
