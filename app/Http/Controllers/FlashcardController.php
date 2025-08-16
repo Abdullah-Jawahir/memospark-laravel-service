@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\FastApiService;
+use App\Services\FileProcessCacheService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\FileProcessCache;
@@ -11,10 +12,12 @@ use Illuminate\Support\Facades\DB;
 class FlashcardController extends Controller
 {
   protected $fastApiService;
+  protected $fileProcessCacheService;
 
-  public function __construct(FastApiService $fastApiService)
+  public function __construct(FastApiService $fastApiService, FileProcessCacheService $fileProcessCacheService)
   {
     $this->fastApiService = $fastApiService;
+    $this->fileProcessCacheService = $fileProcessCacheService;
   }
 
   /**
@@ -38,43 +41,40 @@ class FlashcardController extends Controller
     $cardTypes = $request->input('card_types', ['flashcard']);
     $difficulty = $request->input('difficulty', 'beginner');
 
-    // Normalize card types for consistent hashing
-    sort($cardTypes);
-    $cardTypesJson = json_encode($cardTypes);
-    $cardTypesHash = hash('sha256', $cardTypesJson);
+    // Check cache first
+    $cacheResult = $this->fileProcessCacheService->checkCacheEntry($file, $language, $cardTypes, $difficulty);
+
+    if ($cacheResult['status'] === 'done') {
+      return response()->json([
+        'success' => true,
+        'data' => $cacheResult['result']
+      ]);
+    }
+
+    if ($cacheResult['status'] === 'processing') {
+      return response()->json([
+        'success' => false,
+        'message' => 'Processing in progress. Please try again later.'
+      ], 202);
+    }
+
+    if ($cacheResult['status'] === 'failed') {
+      return response()->json([
+        'success' => false,
+        'message' => 'Processing failed. Please try again.'
+      ], 500);
+    }
+
+    // Not cached, create entry and process
     $fileHash = hash_file('sha256', $file->getRealPath());
 
-    // Use DB transaction to avoid race conditions
-    return DB::transaction(function () use ($fileHash, $language, $cardTypes, $cardTypesJson, $cardTypesHash, $difficulty, $file, $request) {
-      $cache = FileProcessCache::where([
-        'file_hash' => $fileHash,
-        'language' => $language,
-        'difficulty' => $difficulty,
-        'card_types_hash' => $cardTypesHash,
-      ])->lockForUpdate()->first();
-
-      if ($cache) {
-        if ($cache->status === 'done') {
-          return response()->json([
-            'success' => true,
-            'data' => $cache->result['generated_cards'] ?? $cache->result
-          ]);
-        }
-        if ($cache->status === 'processing') {
-          return response()->json([
-            'success' => false,
-            'message' => 'Processing in progress. Please try again later.'
-          ], 202);
-        }
-      }
-
-      // Not cached, create entry and process
+    return DB::transaction(function () use ($fileHash, $language, $cardTypes, $difficulty, $file) {
       $cache = FileProcessCache::create([
         'file_hash' => $fileHash,
         'language' => $language,
         'difficulty' => $difficulty,
         'card_types' => $cardTypes,
-        'card_types_hash' => $cardTypesHash,
+        'card_types_hash' => hash('sha256', json_encode($cardTypes)), // Keep for backward compatibility
         'status' => 'processing',
       ]);
 
@@ -118,15 +118,11 @@ class FlashcardController extends Controller
     $language = $request->input('language', 'en');
     $cardTypes = $request->input('card_types', ['flashcard']);
     $difficulty = $request->input('difficulty', 'beginner');
-    sort($cardTypes);
-    $cardTypesJson = json_encode($cardTypes);
-    $cardTypesHash = hash('sha256', $cardTypesJson);
 
     $cache = FileProcessCache::where([
       'file_hash' => $fileHash,
       'language' => $language,
       'difficulty' => $difficulty,
-      'card_types_hash' => $cardTypesHash,
     ])->first();
 
     if (!$cache) {
@@ -136,9 +132,21 @@ class FlashcardController extends Controller
       ], 404);
     }
 
+    if ($cache->status === 'done') {
+      // Get study materials from database for requested card types
+      $studyMaterials = $this->fileProcessCacheService->getStudyMaterialsForCardTypes($cache->document_id, $cardTypes);
+      $result = $this->fileProcessCacheService->formatResultFromStudyMaterials($studyMaterials, $cardTypes);
+
+      return response()->json([
+        'status' => $cache->status,
+        'result' => $result,
+        'message' => null
+      ]);
+    }
+
     return response()->json([
       'status' => $cache->status,
-      'result' => $cache->status === 'done' ? ($cache->result['generated_cards'] ?? $cache->result) : null,
+      'result' => null,
       'message' => $cache->status === 'failed' ? 'Processing failed.' : null
     ]);
   }
