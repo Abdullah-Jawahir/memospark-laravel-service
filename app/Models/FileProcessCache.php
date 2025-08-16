@@ -16,10 +16,16 @@ class FileProcessCache extends Model
     'difficulty',
     'result',
     'status',
+    'document_id',
   ];
 
   protected $casts = [
     'card_types' => 'array',
     'result' => 'array',
   ];
+
+  public function document()
+  {
+    return $this->belongsTo(Document::class);
+  }
 }
