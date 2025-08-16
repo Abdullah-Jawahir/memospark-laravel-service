@@ -43,6 +43,68 @@ class DocumentController extends Controller
     $difficulty = $request->difficulty ?? 'beginner';
     $language = $request->language;
 
+    // Check cache before proceeding
+    $cacheResult = $this->fileProcessCacheService->checkCacheEntry($file, $language, $cardTypes, $difficulty);
+    if ($cacheResult['status'] === 'done') {
+      $document = null;
+      if ($cacheResult['document_id']) {
+        $document = \App\Models\Document::find($cacheResult['document_id']);
+      }
+      if ($document) {
+        // Check for missing types
+        $existingMaterials = \App\Models\StudyMaterial::where('document_id', $document->id)->get();
+        $existingTypes = $existingMaterials->pluck('type')->unique()->toArray();
+        $missingTypes = array_diff($cardTypes, $existingTypes);
+        if (count($missingTypes) > 0) {
+          // Dispatch background job for missing types
+          \App\Jobs\GenerateMissingCardTypes::dispatch(
+            $document->id,
+            array_values($missingTypes),
+            $language,
+            $difficulty,
+            Storage::disk('private')->path($document->storage_path),
+            $document->original_filename
+          );
+          return response()->json([
+            'message' => 'File already processed, missing types are being generated',
+            'document_id' => $document->id,
+            'status' => 'processing',
+            'from_cache' => true
+          ], 202);
+        }
+        $result = $this->fileProcessCacheService->formatResultFromStudyMaterials($existingMaterials->toArray(), $cardTypes);
+        return response()->json([
+          'message' => 'File already processed (all requested types present)',
+          'document_id' => $document->id,
+          'status' => 'completed',
+          'data' => $result,
+          'from_cache' => true
+        ]);
+      } else {
+        return response()->json([
+          'message' => 'File already processed',
+          'document_id' => $cacheResult['document_id'],
+          'status' => 'completed',
+          'data' => $cacheResult['result'],
+          'from_cache' => true
+        ]);
+      }
+    }
+    if ($cacheResult['status'] === 'processing') {
+      return response()->json([
+        'message' => 'Processing in progress. Please try again later.',
+        'status' => 'processing',
+        'from_cache' => true
+      ], 202);
+    }
+    if ($cacheResult['status'] === 'failed') {
+      return response()->json([
+        'message' => 'Processing failed. Please try again.',
+        'status' => 'failed',
+        'from_cache' => true
+      ], 500);
+    }
+
     $originalFilename = $file->getClientOriginalName();
     $extension = $file->getClientOriginalExtension();
     $filename = Str::uuid() . '.' . $extension;
@@ -97,11 +159,12 @@ class DocumentController extends Controller
       'message' => 'File uploaded successfully',
       'document_id' => $document->id,
       'is_guest' => $isGuest,
-      'status' => 'processing'
+      'status' => 'processing',
+      'from_cache' => false
     ]);
   }
 
-  public function status($id)
+  public function status($id, Request $request)
   {
     Log::channel('fastapi')->info('Document status check called', [
       'document_id' => $id
@@ -114,28 +177,75 @@ class DocumentController extends Controller
         'metadata' => $document->metadata
       ]);
 
-      // Try to get the related FileProcessCache entry (if any)
-      $file_hash = $document->metadata['file_hash'] ?? null;
-      $card_types_hash = $document->metadata['card_types_hash'] ?? null;
+      // Get card_types from request or document metadata
+      $cardTypes = $request->input('card_types', $document->metadata['card_types'] ?? ['flashcard']);
+      if (!is_array($cardTypes)) {
+        $cardTypes = [$cardTypes];
+      }
+      $difficulty = $document->metadata['difficulty'] ?? 'beginner';
       $language = $document->language;
-      $difficulty = $document->metadata['difficulty'] ?? null;
-      $cache_status = null;
-      if ($file_hash && $card_types_hash && $language && $difficulty) {
+      $file = null;
+      $file_hash = null;
+      if (isset($document->metadata['file_hash'])) {
+        $file_hash = $document->metadata['file_hash'];
+      } else {
+        // Try to compute file hash if file exists
+        $storagePath = Storage::disk('private')->path($document->storage_path);
+        if (file_exists($storagePath)) {
+          $file_hash = hash_file('sha256', $storagePath);
+        }
+      }
+      if ($file_hash) {
         $cache = \App\Models\FileProcessCache::where([
           'file_hash' => $file_hash,
           'language' => $language,
           'difficulty' => $difficulty,
-          'card_types_hash' => $card_types_hash,
         ])->first();
-        if ($cache) {
-          $cache_status = $cache->status;
+        if ($cache && $cache->status === 'done') {
+          // Check for missing types
+          $existingMaterials = \App\Models\StudyMaterial::where('document_id', $cache->document_id)->get();
+          $existingTypes = $existingMaterials->pluck('type')->unique()->toArray();
+          $missingTypes = array_diff($cardTypes, $existingTypes);
+          if (count($missingTypes) > 0) {
+            // Dispatch background job for missing types
+            \App\Jobs\GenerateMissingCardTypes::dispatch(
+              $cache->document_id,
+              array_values($missingTypes),
+              $language,
+              $difficulty,
+              Storage::disk('private')->path($document->storage_path),
+              $document->original_filename
+            );
+            return response()->json([
+              'status' => 'processing',
+              'metadata' => $document->metadata,
+              'cache_status' => $cache->status,
+              'from_cache' => true,
+              'message' => 'Missing types are being generated',
+              'processing' => true
+            ], 202);
+          }
+          $result = $this->fileProcessCacheService->formatResultFromStudyMaterials($existingMaterials->toArray(), $cardTypes);
+          return response()->json([
+            'status' => $document->status,
+            'metadata' => $document->metadata,
+            'cache_status' => $cache->status,
+            'data' => $result,
+            'from_cache' => true
+          ]);
         }
+        return response()->json([
+          'status' => $document->status,
+          'metadata' => $document->metadata,
+          'cache_status' => $cache ? $cache->status : null,
+          'from_cache' => false
+        ]);
       }
-
       return response()->json([
         'status' => $document->status,
         'metadata' => $document->metadata,
-        'cache_status' => $cache_status,
+        'cache_status' => null,
+        'from_cache' => false
       ]);
     } catch (\Exception $e) {
       Log::channel('fastapi')->error('Error in document status check', [
