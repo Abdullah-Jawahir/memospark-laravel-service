@@ -15,6 +15,7 @@ class FlashcardReview extends Model
         'rating',
         'reviewed_at',
         'session_id',
+        'study_time',
     ];
 
     public function user()

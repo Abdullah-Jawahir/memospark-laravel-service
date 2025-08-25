@@ -48,7 +48,9 @@ Route::middleware(['throttle:api', SupabaseAuth::class])->group(function () {
   Route::get('/flashcard-reviews', [FlashcardReviewController::class, 'index']);
 });
 
-Route::middleware('supabase')->group(function () {
+Route::middleware('supabase.auth')->group(function () {
+  Route::get('dashboard', [DashboardController::class, 'dashboard']);
+  Route::get('dashboard/user-info', [DashboardController::class, 'userInfo']);
   Route::get('dashboard/overview', [DashboardController::class, 'overview']);
   Route::get('dashboard/recent-decks', [DashboardController::class, 'recentDecks']);
   Route::get('dashboard/todays-goal', [DashboardController::class, 'todaysGoal']);
@@ -57,4 +59,9 @@ Route::middleware('supabase')->group(function () {
   Route::post('decks', [DeckController::class, 'store']);
   Route::post('user-goals', [UserGoalController::class, 'store']);
   Route::post('user-achievements', [UserAchievementController::class, 'store']);
+});
+
+// Test endpoint to verify authentication
+Route::get('test-auth', function () {
+  return response()->json(['message' => 'Public endpoint working']);
 });

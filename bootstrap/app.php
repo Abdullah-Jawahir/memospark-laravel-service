@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'guest.document' => \App\Http\Middleware\GuestDocumentAccess::class,
             'document.access' => \App\Http\Middleware\DocumentAccess::class,
             'guest.document.status' => \App\Http\Middleware\GuestDocumentStatus::class,
+            'supabase.auth' => \App\Http\Middleware\SupabaseAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
