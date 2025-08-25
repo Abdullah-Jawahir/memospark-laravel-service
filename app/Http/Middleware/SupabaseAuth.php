@@ -24,14 +24,28 @@ class SupabaseAuth
       ])->get(env('SUPABASE_URL') . '/auth/v1/user');
 
       if ($response->successful()) {
+        $userData = $response->json();
+
+        // Ensure we have the required user data structure
+        $supabaseUser = [
+          'id' => $userData['id'] ?? null,
+          'email' => $userData['email'] ?? null,
+          'user_metadata' => $userData['user_metadata'] ?? [],
+        ];
+
+        // Validate that we have the essential user data
+        if (!$supabaseUser['id'] || !$supabaseUser['email']) {
+          return response()->json(['message' => 'Invalid user data from Supabase'], 401);
+        }
+
         // Store the user data in the request for later use
-        $request->merge(['supabase_user' => $response->json()]);
+        $request->merge(['supabase_user' => $supabaseUser]);
         return $next($request);
       }
 
       return response()->json(['message' => 'Invalid token'], 401);
     } catch (\Exception $e) {
-      return response()->json(['message' => 'Authentication failed'], 401);
+      return response()->json(['message' => 'Authentication failed: ' . $e->getMessage()], 401);
     }
   }
 }
