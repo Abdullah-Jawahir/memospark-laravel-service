@@ -10,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeckController;
 use App\Http\Controllers\UserGoalController;
 use App\Http\Controllers\UserAchievementController;
+use App\Http\Controllers\StudyTrackingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,6 +60,12 @@ Route::middleware('supabase.auth')->group(function () {
   Route::post('decks', [DeckController::class, 'store']);
   Route::post('user-goals', [UserGoalController::class, 'store']);
   Route::post('user-achievements', [UserAchievementController::class, 'store']);
+
+  // Study tracking endpoints
+  Route::post('study/start-session', [StudyTrackingController::class, 'startSession']);
+  Route::post('study/record-review', [StudyTrackingController::class, 'recordReview']);
+  Route::get('study/stats', [StudyTrackingController::class, 'getStats']);
+  Route::get('study/recent-activity', [StudyTrackingController::class, 'getRecentActivity']);
 });
 
 // Test endpoint to verify authentication
