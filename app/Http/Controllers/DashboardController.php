@@ -207,9 +207,9 @@ class DashboardController extends Controller
                 'description' => $a->description,
                 'icon' => $a->icon,
                 'earned_at' => $a->achieved_at,
-                'points' => $a->points,
+                'points' => $a->points ?? 0, // Ensure points is never null
             ];
-        })->take(10);
+        })->take(10)->values(); // Add values() to reindex the collection
 
         return response()->json($result);
     }
@@ -418,27 +418,32 @@ class DashboardController extends Controller
             10 => [
                 'name' => 'Getting Started',
                 'description' => 'Earned 10 points in the system',
-                'icon' => '🎯'
+                'icon' => '🎯',
+                'points' => 10
             ],
             50 => [
                 'name' => 'Fast Learner',
                 'description' => 'Earned 50 points in the system',
-                'icon' => '🚀'
+                'icon' => '🚀',
+                'points' => 50
             ],
             100 => [
                 'name' => 'Knowledge Seeker',
                 'description' => 'Earned 100 points in the system',
-                'icon' => '🧠'
+                'icon' => '🧠',
+                'points' => 100
             ],
             250 => [
                 'name' => 'Memory Master',
                 'description' => 'Earned 250 points in the system',
-                'icon' => '🏆'
+                'icon' => '🏆',
+                'points' => 250
             ],
             500 => [
                 'name' => 'Study Champion',
                 'description' => 'Earned 500 points in the system',
-                'icon' => '🥇'
+                'icon' => '🥇',
+                'points' => 500
             ],
         ];
 
@@ -449,14 +454,29 @@ class DashboardController extends Controller
                 $existingAchievement = Achievement::where('name', $achievementData['name'])->first();
 
                 if ($existingAchievement) {
-                    // Use existing achievement
+                    // Use existing achievement but update it if needed
                     $achievement = $existingAchievement;
+
+                    // Update the achievement if icon or points don't match expected values
+                    $needsUpdate = false;
+                    if ($achievement->icon !== $achievementData['icon']) {
+                        $achievement->icon = $achievementData['icon'];
+                        $needsUpdate = true;
+                    }
+                    if ($achievement->points !== $achievementData['points']) {
+                        $achievement->points = $achievementData['points'];
+                        $needsUpdate = true;
+                    }
+                    if ($needsUpdate) {
+                        $achievement->save();
+                    }
                 } else {
                     // Create a new achievement in the database
                     $achievement = Achievement::create([
                         'name' => $achievementData['name'],
                         'description' => $achievementData['description'],
-                        'icon' => $achievementData['icon']
+                        'icon' => $achievementData['icon'],
+                        'points' => $achievementData['points']
                     ]);
                 }
 
