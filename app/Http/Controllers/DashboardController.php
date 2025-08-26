@@ -86,8 +86,9 @@ class DashboardController extends Controller
             ->get();
 
         $result = $decks->map(function ($deck) use ($userId) {
-            $total = $deck->studyMaterials->count();
-            $reviewed = $deck->studyMaterials->filter(function ($sm) use ($userId) {
+            // Count only flashcard type study materials
+            $total = $deck->studyMaterials->where('type', 'flashcard')->count();
+            $reviewed = $deck->studyMaterials->where('type', 'flashcard')->filter(function ($sm) use ($userId) {
                 return $sm->reviews->where('user_id', $userId)->count() > 0;
             })->count();
             $progress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
@@ -293,8 +294,9 @@ class DashboardController extends Controller
             ->get();
 
         $recentDecks = $decks->map(function ($deck) use ($userId) {
-            $total = $deck->studyMaterials->count();
-            $reviewed = $deck->studyMaterials->filter(function ($sm) use ($userId) {
+            // Count only flashcard type study materials
+            $total = $deck->studyMaterials->where('type', 'flashcard')->count();
+            $reviewed = $deck->studyMaterials->where('type', 'flashcard')->filter(function ($sm) use ($userId) {
                 return $sm->reviews->where('user_id', $userId)->count() > 0;
             })->count();
             $progress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
