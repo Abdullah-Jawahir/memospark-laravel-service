@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Deck;
+use App\Models\User;
+use App\Models\Document;
 use Illuminate\Http\Request;
+use App\Models\StudyMaterial;
 use Illuminate\Support\Carbon;
 use App\Models\FlashcardReview;
-use App\Models\StudyMaterial;
-use App\Models\Document;
-use App\Models\Deck;
+use Illuminate\Support\Facades\Log;
 
 class StudyTrackingController extends Controller
 {
@@ -24,14 +26,45 @@ class StudyTrackingController extends Controller
     ]);
 
     $supabaseUser = $request->get('supabase_user');
-    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+    if (!$supabaseUser || !isset($supabaseUser['email'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
-    $userId = $supabaseUser['id'];
+    // Map Supabase user to local users table (int id)
+    $appUser = User::firstOrCreate(
+      ['email' => $supabaseUser['email']],
+      [
+        'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
+        'user_type' => 'student',
+        'password' => null,
+      ]
+    );
+    $userId = $appUser->id;
 
-    // Verify the study material belongs to a document owned by this user
-    $studyMaterial = StudyMaterial::with('document.deck')->find($request->study_material_id);
-    if (!$studyMaterial || $studyMaterial->document->deck->user_id !== $userId) {
+    // Verify the study material belongs to a document owned by this user (by id or email)
+    $studyMaterial = StudyMaterial::with(['document.deck'])->find($request->study_material_id);
+
+    Log::info($studyMaterial ? $studyMaterial->toArray() : null);
+
+    Log::info($userId);
+    $ownedByUser = false;
+    if ($studyMaterial && $studyMaterial->document) {
+      $documentOwnerSupabaseId = $studyMaterial->document->user_id ?? null; // Supabase UUID
+      $deckOwnerSupabaseId = $studyMaterial->document->deck->user_id ?? null; // Supabase UUID
+
+      // Prefer strict check against Supabase user id if available
+      if (!empty($supabaseUser['id'])) {
+        $ownedByUser = ($documentOwnerSupabaseId === $supabaseUser['id']) || ($deckOwnerSupabaseId === $supabaseUser['id']);
+      }
+
+      // Fallback: if deck->user relation is available, also validate via local user/email mapping
+      if (!$ownedByUser && $studyMaterial->document->deck && method_exists($studyMaterial->document->deck, 'getRelation')) {
+        $deckUser = $studyMaterial->document->deck->getRelation('user') ?? null;
+        if ($deckUser) {
+          $ownedByUser = ($deckUser->id === $userId) || (isset($supabaseUser['email']) && $deckUser->email === $supabaseUser['email']);
+        }
+      }
+    }
+    if (!$studyMaterial || !$ownedByUser) {
       return response()->json(['error' => 'Study material not found or access denied'], 404);
     }
 
@@ -66,15 +99,21 @@ class StudyTrackingController extends Controller
     ]);
 
     $supabaseUser = $request->get('supabase_user');
-    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+    if (!$supabaseUser || !isset($supabaseUser['email'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
-    $userId = $supabaseUser['id'];
+    $appUser = User::firstOrCreate(
+      ['email' => $supabaseUser['email']],
+      [
+        'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
+        'user_type' => 'student',
+        'password' => null,
+      ]
+    );
+    $userId = $appUser->id;
 
     // Verify the deck belongs to this user
-    $deck = Deck::where('id', $request->deck_id)
-      ->where('user_id', $userId)
-      ->first();
+    $deck = Deck::with(['user'])->find($request->deck_id);
 
     if (!$deck) {
       return response()->json(['error' => 'Deck not found or access denied'], 404);
@@ -101,10 +140,18 @@ class StudyTrackingController extends Controller
   public function getStats(Request $request)
   {
     $supabaseUser = $request->get('supabase_user');
-    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+    if (!$supabaseUser || !isset($supabaseUser['email'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
-    $userId = $supabaseUser['id'];
+    $appUser = User::firstOrCreate(
+      ['email' => $supabaseUser['email']],
+      [
+        'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
+        'user_type' => 'student',
+        'password' => null,
+      ]
+    );
+    $userId = $appUser->id;
 
     $today = Carbon::today();
     $thisWeek = Carbon::now()->startOfWeek();
