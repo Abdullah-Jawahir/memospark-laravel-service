@@ -207,10 +207,11 @@ class DashboardController extends Controller
                 'description' => $a->description,
                 'icon' => $a->icon,
                 'earned_at' => $a->achieved_at,
+                'points' => $a->points,
             ];
         })->take(10);
 
-        return response()->json(['achievements' => $result]);
+        return response()->json($result);
     }
 
     public function userInfo(Request $request)
