@@ -181,19 +181,27 @@ class DashboardController extends Controller
         if (!$supabaseUser || !isset($supabaseUser['id'])) {
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
-        $userId = $supabaseUser['id'];
+        // Map to local user id
+        $user = \App\Models\User::where('id', $supabaseUser['id'])
+            ->orWhere('email', $supabaseUser['email'])
+            ->first();
+        if (!$user) {
+            return response()->json([]);
+        }
         $achievements = Achievement::join('user_achievements', 'achievements.id', '=', 'user_achievements.achievement_id')
-            ->where('user_achievements.user_id', $userId)
+            ->where('user_achievements.user_id', $user->id)
+            ->orderByDesc('user_achievements.achieved_at')
+            ->limit(10)
             ->get(['achievements.*', 'user_achievements.achieved_at']);
         $result = $achievements->map(function ($a) {
             return [
-                'name' => $a->name,
+                'title' => $a->name,
                 'description' => $a->description,
                 'icon' => $a->icon,
-                'achieved_at' => $a->achieved_at,
+                'earned_at' => $a->achieved_at,
             ];
         });
-        return response()->json($result);
+        return response()->json(['achievements' => $result]);
     }
 
     public function userInfo(Request $request)

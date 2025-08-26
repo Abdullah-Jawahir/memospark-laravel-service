@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use App\Models\StudyMaterial;
 use Illuminate\Support\Carbon;
 use App\Models\FlashcardReview;
+use App\Models\Achievement;
+use App\Models\UserAchievement;
 use Illuminate\Support\Facades\Log;
 
 class StudyTrackingController extends Controller
@@ -78,6 +80,42 @@ class StudyTrackingController extends Controller
       'session_id' => $request->session_id,
     ]);
 
+    // Award points based on rating and time, then unlock achievements
+    $ratingPointsMap = [
+      'again' => 1,
+      'hard' => 2,
+      'good' => 3,
+      'easy' => 4,
+    ];
+    $earnedPoints = $ratingPointsMap[$request->rating] ?? 1;
+    // Small time bonus: +1 point per full 60 seconds
+    $earnedPoints += intdiv((int)$request->study_time, 60);
+
+    // Increment user points
+    $appUser->points = (int)($appUser->points ?? 0) + $earnedPoints;
+    $appUser->save();
+
+    // Unlock any point-based achievements
+    $eligible = Achievement::where(function ($q) {
+      $q->whereNull('criteria')->orWhere('criteria', 'points');
+    })
+      ->where('points', '>', 0)
+      ->where('points', '<=', $appUser->points)
+      ->get();
+
+    foreach ($eligible as $achievement) {
+      $already = UserAchievement::where('user_id', $appUser->id)
+        ->where('achievement_id', $achievement->id)
+        ->exists();
+      if (!$already) {
+        UserAchievement::create([
+          'user_id' => $appUser->id,
+          'achievement_id' => $achievement->id,
+          'achieved_at' => now(),
+        ]);
+      }
+    }
+
     return response()->json([
       'message' => 'Study session recorded successfully',
       'review' => [
@@ -85,7 +123,9 @@ class StudyTrackingController extends Controller
         'rating' => $review->rating,
         'study_time' => $review->study_time,
         'reviewed_at' => $review->reviewed_at,
-      ]
+      ],
+      'earned_points' => $earnedPoints,
+      'total_points' => $appUser->points,
     ]);
   }
 
