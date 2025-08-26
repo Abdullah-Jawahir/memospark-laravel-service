@@ -35,19 +35,15 @@ class StudyTrackingController extends Controller
       return response()->json(['error' => 'Study material not found or access denied'], 404);
     }
 
-    // Create or update the review
-    $review = FlashcardReview::updateOrCreate(
-      [
-        'user_id' => $userId,
-        'study_material_id' => $request->study_material_id,
-      ],
-      [
-        'rating' => $request->rating,
-        'study_time' => $request->study_time,
-        'reviewed_at' => now(),
-        'session_id' => $request->session_id,
-      ]
-    );
+    // Create a new review per attempt (no upsert)
+    $review = FlashcardReview::create([
+      'user_id' => $userId,
+      'study_material_id' => $request->study_material_id,
+      'rating' => $request->rating,
+      'study_time' => $request->study_time,
+      'reviewed_at' => now(),
+      'session_id' => $request->session_id,
+    ]);
 
     return response()->json([
       'message' => 'Study session recorded successfully',
@@ -194,13 +190,18 @@ class StudyTrackingController extends Controller
       ->take(10)
       ->get()
       ->map(function ($review) {
+        $content = $review->studyMaterial->content;
+        if (is_array($content)) {
+          $content = json_encode($content);
+        }
+        $snippet = is_string($content) ? substr($content, 0, 100) . '...' : '';
         return [
           'id' => $review->id,
           'deck_name' => $review->studyMaterial->document->deck->name ?? 'Unknown Deck',
           'rating' => $review->rating,
           'study_time' => $this->formatStudyTime($review->study_time),
           'reviewed_at' => $review->reviewed_at->diffForHumans(),
-          'card_content' => substr($review->studyMaterial->content, 0, 100) . '...',
+          'card_content' => $snippet,
         ];
       });
 

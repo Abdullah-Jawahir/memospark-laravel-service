@@ -58,6 +58,8 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('dashboard/achievements', [DashboardController::class, 'achievements']);
 
   Route::post('decks', [DeckController::class, 'store']);
+  Route::get('decks', [DeckController::class, 'index']);
+  Route::get('decks/{deck}/materials', [DeckController::class, 'materials']);
   Route::post('user-goals', [UserGoalController::class, 'store']);
   Route::post('user-achievements', [UserAchievementController::class, 'store']);
 

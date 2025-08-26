@@ -105,6 +105,7 @@ class DashboardController extends Controller
             }
 
             return [
+                'id' => $deck->id,
                 'name' => $deck->name,
                 'card_count' => $total,
                 'last_studied' => $lastStudiedText,
