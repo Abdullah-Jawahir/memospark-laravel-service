@@ -186,21 +186,30 @@ class DashboardController extends Controller
             ->orWhere('email', $supabaseUser['email'])
             ->first();
         if (!$user) {
-            return response()->json([]);
+            return response()->json(['achievements' => []]);
         }
-        $achievements = Achievement::join('user_achievements', 'achievements.id', '=', 'user_achievements.achievement_id')
+
+        // First ensure user has all achievements they qualify for
+        $this->ensurePointBasedAchievements($user);
+
+        // Now get all achievements with no duplicates
+        $userAchievements = Achievement::join('user_achievements', 'achievements.id', '=', 'user_achievements.achievement_id')
             ->where('user_achievements.user_id', $user->id)
             ->orderByDesc('user_achievements.achieved_at')
-            ->limit(10)
-            ->get(['achievements.*', 'user_achievements.achieved_at']);
-        $result = $achievements->map(function ($a) {
+            ->get(['achievements.*', 'user_achievements.achieved_at', 'user_achievements.id as ua_id']);
+
+        // Use collection's unique method to avoid duplicates by achievement name
+        $uniqueAchievements = $userAchievements->unique('name');
+
+        $result = $uniqueAchievements->map(function ($a) {
             return [
                 'title' => $a->name,
                 'description' => $a->description,
                 'icon' => $a->icon,
                 'earned_at' => $a->achieved_at,
             ];
-        });
+        })->take(10);
+
         return response()->json(['achievements' => $result]);
     }
 
@@ -391,5 +400,79 @@ class DashboardController extends Controller
                 'message' => $remaining > 0 ? "{$remaining} more cards to reach your daily goal!" : "Goal completed! Great job!"
             ]
         ]);
+    }
+
+    /**
+     * Ensure the user has all achievements they qualify for based on points
+     * 
+     * @param \App\Models\User $user
+     * @return void
+     */
+    private function ensurePointBasedAchievements($user)
+    {
+        $points = $user->points ?? 0;
+
+        // Define point thresholds for achievements
+        $pointAchievements = [
+            10 => [
+                'name' => 'Getting Started',
+                'description' => 'Earned 10 points in the system',
+                'icon' => '🎯'
+            ],
+            50 => [
+                'name' => 'Fast Learner',
+                'description' => 'Earned 50 points in the system',
+                'icon' => '🚀'
+            ],
+            100 => [
+                'name' => 'Knowledge Seeker',
+                'description' => 'Earned 100 points in the system',
+                'icon' => '🧠'
+            ],
+            250 => [
+                'name' => 'Memory Master',
+                'description' => 'Earned 250 points in the system',
+                'icon' => '🏆'
+            ],
+            500 => [
+                'name' => 'Study Champion',
+                'description' => 'Earned 500 points in the system',
+                'icon' => '🥇'
+            ],
+        ];
+
+        // Check which achievements the user qualifies for based on points
+        foreach ($pointAchievements as $threshold => $achievementData) {
+            if ($points >= $threshold) {
+                // Check if this achievement already exists in the database
+                $existingAchievement = Achievement::where('name', $achievementData['name'])->first();
+
+                if ($existingAchievement) {
+                    // Use existing achievement
+                    $achievement = $existingAchievement;
+                } else {
+                    // Create a new achievement in the database
+                    $achievement = Achievement::create([
+                        'name' => $achievementData['name'],
+                        'description' => $achievementData['description'],
+                        'icon' => $achievementData['icon']
+                    ]);
+                }
+
+                // Check if user has already been assigned this achievement
+                $userHasAchievement = UserAchievement::where('user_id', $user->id)
+                    ->where('achievement_id', $achievement->id)
+                    ->exists();
+
+                if (!$userHasAchievement) {
+                    // Create record in user_achievements table
+                    UserAchievement::create([
+                        'user_id' => $user->id,
+                        'achievement_id' => $achievement->id,
+                        'achieved_at' => now()
+                    ]);
+                }
+            }
+        }
     }
 }
