@@ -42,6 +42,9 @@ class StudyTrackingController extends Controller
     );
     $userId = $appUser->id;
 
+    // Get the current session ID from the request
+    $currentSessionId = $request->session_id;
+
     // Verify the study material belongs to a document owned by this user (by id or email)
     $studyMaterial = StudyMaterial::with(['document.deck'])->find($request->study_material_id);
 
@@ -70,7 +73,27 @@ class StudyTrackingController extends Controller
       return response()->json(['error' => 'Study material not found or access denied'], 404);
     }
 
-    // Create a new review per attempt (no upsert)
+    // Check if this card was previously rated as "hard" in the same session
+    $previousRating = null;
+    $ratingChanged = false;
+
+    if ($currentSessionId) {
+      $previousReview = FlashcardReview::where('user_id', $userId)
+        ->where('study_material_id', $request->study_material_id)
+        ->where('session_id', $currentSessionId)
+        ->orderByDesc('reviewed_at')
+        ->first();
+
+      if ($previousReview) {
+        $previousRating = $previousReview->rating;
+        // Check if the rating changed from "hard" to "good" or "easy"
+        if ($previousRating === 'hard' && ($request->rating === 'good' || $request->rating === 'easy')) {
+          $ratingChanged = true;
+        }
+      }
+    }
+
+    // Create a new review per attempt
     $review = FlashcardReview::create([
       'user_id' => $userId,
       'study_material_id' => $request->study_material_id,
@@ -116,6 +139,38 @@ class StudyTrackingController extends Controller
       }
     }
 
+    // Calculate session statistics
+    $sessionStats = null;
+    if ($currentSessionId) {
+      // Get counts for this session
+      $sessionStats = [
+        'total' => FlashcardReview::where('user_id', $userId)
+          ->where('session_id', $currentSessionId)
+          ->distinct('study_material_id')
+          ->count(),
+        'hard_count' => FlashcardReview::where('user_id', $userId)
+          ->where('session_id', $currentSessionId)
+          ->where('rating', 'hard')
+          ->whereRaw('id IN (
+            SELECT MAX(id) FROM flashcard_reviews 
+            WHERE user_id = ? AND session_id = ?
+            GROUP BY study_material_id
+          )', [$userId, $currentSessionId])
+          ->count(),
+        'good_or_easy_count' => FlashcardReview::where('user_id', $userId)
+          ->where('session_id', $currentSessionId)
+          ->whereIn('rating', ['good', 'easy'])
+          ->whereRaw('id IN (
+            SELECT MAX(id) FROM flashcard_reviews 
+            WHERE user_id = ? AND session_id = ?
+            GROUP BY study_material_id
+          )', [$userId, $currentSessionId])
+          ->count(),
+        'rating_changed' => $ratingChanged,
+        'previous_rating' => $previousRating,
+      ];
+    }
+
     return response()->json([
       'message' => 'Study session recorded successfully',
       'review' => [
@@ -126,6 +181,7 @@ class StudyTrackingController extends Controller
       ],
       'earned_points' => $earnedPoints,
       'total_points' => $appUser->points,
+      'session_stats' => $sessionStats,
     ]);
   }
 
