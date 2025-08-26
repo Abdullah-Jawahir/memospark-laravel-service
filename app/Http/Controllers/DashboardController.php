@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use App\Models\Deck;
 use App\Models\UserGoal;
 use App\Models\Achievement;
-use App\Models\UserAchievement;
-use App\Models\FlashcardReview;
+use Illuminate\Http\Request;
 use App\Models\StudyMaterial;
+use Illuminate\Support\Carbon;
+use App\Models\FlashcardReview;
+use App\Models\UserAchievement;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -21,14 +22,25 @@ class DashboardController extends Controller
         }
         $userId = $supabaseUser['id'];
         $today = Carbon::today();
+        // Resolve local app user (numeric) for reviews table
+        $appUser = \App\Models\User::firstOrCreate(
+            ['email' => $supabaseUser['email']],
+            [
+                'id' => $userId,
+                'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
+                'user_type' => 'student',
+                'password' => null,
+            ]
+        );
+        $localUserId = $appUser->id;
 
         // Cards studied today
-        $cardsStudiedToday = FlashcardReview::where('user_id', $userId)
+        $cardsStudiedToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
 
         // Current streak (days in a row with at least one review)
-        $dates = FlashcardReview::where('user_id', $userId)
+        $dates = FlashcardReview::where('user_id', $localUserId)
             ->selectRaw('DATE(reviewed_at) as date')
             ->distinct()
             ->orderByDesc('date')
@@ -48,13 +60,13 @@ class DashboardController extends Controller
         $total = StudyMaterial::whereHas('document', function ($q) use ($userId) {
             $q->where('user_id', $userId);
         })->count();
-        $reviewed = FlashcardReview::where('user_id', $userId)
+        $reviewed = FlashcardReview::where('user_id', $localUserId)
             ->distinct('study_material_id')
             ->count('study_material_id');
         $overallProgress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
 
         // Study time today (sum of actual study time from reviews)
-        $studyTimeSeconds = FlashcardReview::where('user_id', $userId)
+        $studyTimeSeconds = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->sum('study_time');
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
@@ -77,25 +89,38 @@ class DashboardController extends Controller
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
         $userId = $supabaseUser['id'];
+        // Resolve local app user id for reviews
+        $appUser = \App\Models\User::firstOrCreate(
+            ['email' => $supabaseUser['email']],
+            [
+                'id' => $userId,
+                'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
+                'user_type' => 'student',
+                'password' => null,
+            ]
+        );
+        $localUserId = $appUser->id;
         $decks = Deck::where('user_id', $userId)
-            ->with(['studyMaterials.reviews' => function ($q) use ($userId) {
-                $q->where('user_id', $userId);
+            ->with(['studyMaterials.reviews' => function ($q) use ($localUserId) {
+                $q->where('user_id', $localUserId);
             }])
             ->orderByDesc('updated_at')
             ->take(3)
             ->get();
 
-        $result = $decks->map(function ($deck) use ($userId) {
+        $result = $decks->map(function ($deck) use ($localUserId) {
             // Count only flashcard type study materials
             $total = $deck->studyMaterials->where('type', 'flashcard')->count();
-            $reviewed = $deck->studyMaterials->where('type', 'flashcard')->filter(function ($sm) use ($userId) {
-                return $sm->reviews->where('user_id', $userId)->count() > 0;
+            $reviewed = $deck->studyMaterials->where('type', 'flashcard')->filter(function ($sm) use ($localUserId) {
+                return $sm->reviews->where('user_id', $localUserId)->count() > 0;
             })->count();
             $progress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
             $lastStudied = $deck->studyMaterials->flatMap->reviews
-                ->where('user_id', $userId)
+                ->where('user_id', $localUserId)
                 ->sortByDesc('reviewed_at')
                 ->first()?->reviewed_at;
+
+            Log::info($lastStudied);
 
             // Format last studied time
             $lastStudiedText = 'Never studied';
@@ -245,13 +270,16 @@ class DashboardController extends Controller
 
         $today = Carbon::today();
 
+        // Use local app user id for review stats
+        $localUserId = $user->id;
+
         // Cards studied today
-        $cardsStudiedToday = FlashcardReview::where('user_id', $userId)
+        $cardsStudiedToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
 
         // Current streak
-        $dates = FlashcardReview::where('user_id', $userId)
+        $dates = FlashcardReview::where('user_id', $localUserId)
             ->selectRaw('DATE(reviewed_at) as date')
             ->distinct()
             ->orderByDesc('date')
@@ -271,13 +299,13 @@ class DashboardController extends Controller
         $total = StudyMaterial::whereHas('document', function ($q) use ($userId) {
             $q->where('user_id', $userId);
         })->count();
-        $reviewed = FlashcardReview::where('user_id', $userId)
+        $reviewed = FlashcardReview::where('user_id', $localUserId)
             ->distinct('study_material_id')
             ->count('study_material_id');
         $overallProgress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
 
         // Study time today
-        $studyTimeSeconds = FlashcardReview::where('user_id', $userId)
+        $studyTimeSeconds = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->sum('study_time');
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
@@ -287,22 +315,22 @@ class DashboardController extends Controller
 
         // Recent study decks
         $decks = Deck::where('user_id', $userId)
-            ->with(['studyMaterials.reviews' => function ($q) use ($userId) {
-                $q->where('user_id', $userId);
+            ->with(['studyMaterials.reviews' => function ($q) use ($localUserId) {
+                $q->where('user_id', $localUserId);
             }])
             ->orderByDesc('updated_at')
             ->take(3)
             ->get();
 
-        $recentDecks = $decks->map(function ($deck) use ($userId) {
+        $recentDecks = $decks->map(function ($deck) use ($localUserId) {
             // Count only flashcard type study materials
             $total = $deck->studyMaterials->where('type', 'flashcard')->count();
-            $reviewed = $deck->studyMaterials->where('type', 'flashcard')->filter(function ($sm) use ($userId) {
-                return $sm->reviews->where('user_id', $userId)->count() > 0;
+            $reviewed = $deck->studyMaterials->where('type', 'flashcard')->filter(function ($sm) use ($localUserId) {
+                return $sm->reviews->where('user_id', $localUserId)->count() > 0;
             })->count();
             $progress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
             $lastStudied = $deck->studyMaterials->flatMap->reviews
-                ->where('user_id', $userId)
+                ->where('user_id', $localUserId)
                 ->sortByDesc('reviewed_at')
                 ->first()?->reviewed_at;
 
