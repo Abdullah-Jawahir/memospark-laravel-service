@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use App\Models\User;
 
 class SupabaseAuth
 {
@@ -26,17 +27,36 @@ class SupabaseAuth
       if ($response->successful()) {
         $userData = $response->json();
 
-        // Ensure we have the required user data structure
-        $supabaseUser = [
-          'id' => $userData['id'] ?? null,
-          'email' => $userData['email'] ?? null,
-          'user_metadata' => $userData['user_metadata'] ?? [],
-        ];
+        // Get or create user in our local database
+        $email = $userData['email'] ?? null;
+        $userId = $userData['id'] ?? null;
 
-        // Validate that we have the essential user data
-        if (!$supabaseUser['id'] || !$supabaseUser['email']) {
+        if (!$email || !$userId) {
           return response()->json(['message' => 'Invalid user data from Supabase'], 401);
         }
+
+        // Find or create user in our local database
+        $localUser = User::where('email', $email)->first();
+
+        if (!$localUser) {
+          // Create new user with default student role
+          $localUser = User::create([
+            'id' => $userId,
+            'name' => $userData['user_metadata']['full_name'] ?? $email,
+            'email' => $email,
+            'user_type' => 'student', // Default to student
+            'password' => null,
+          ]);
+        }
+
+        // Prepare user data for the request
+        $supabaseUser = [
+          'id' => $userData['id'],
+          'email' => $userData['email'],
+          'user_metadata' => $userData['user_metadata'] ?? [],
+          'role' => $localUser->user_type, // Use local user_type as role
+          'local_user' => $localUser
+        ];
 
         // Store the user data in the request for later use
         $request->merge(['supabase_user' => $supabaseUser]);
