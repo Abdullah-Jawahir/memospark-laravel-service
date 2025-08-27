@@ -390,4 +390,117 @@ class StudyTrackingController extends Controller
 
     return $hours . 'h ' . $remainingMinutes . 'm';
   }
+
+  /**
+   * Enrich study materials with database IDs for rating functionality
+   * This is used when study materials are loaded from localStorage but need database IDs
+   */
+  public function enrichMaterials(Request $request)
+  {
+    $request->validate([
+      'deck_name' => 'required|string',
+      'materials' => 'required|array',
+      'materials.flashcards' => 'array',
+      'materials.quizzes' => 'array',
+      'materials.exercises' => 'array',
+    ]);
+
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $userId = $supabaseUser['id'];
+    $deckName = $request->input('deck_name');
+    $materials = $request->input('materials');
+
+    try {
+      // Find the deck by name and user
+      $deck = Deck::where('user_id', $userId)
+        ->where('name', $deckName)
+        ->first();
+
+      if (!$deck) {
+        return response()->json(['error' => 'Deck not found'], 404);
+      }
+
+      // Get study materials from database for this deck
+      $studyMaterials = StudyMaterial::with('document')
+        ->whereHas('document', function ($q) use ($deck) {
+          $q->where('deck_id', $deck->id);
+        })
+        ->orderBy('id')
+        ->get();
+
+      // Enrich materials with database IDs by matching content
+      $enrichedMaterials = [
+        'flashcards' => $this->enrichMaterialType($materials['flashcards'] ?? [], $studyMaterials, 'flashcard'),
+        'quizzes' => $this->enrichMaterialType($materials['quizzes'] ?? [], $studyMaterials, 'quiz'),
+        'exercises' => $this->enrichMaterialType($materials['exercises'] ?? [], $studyMaterials, 'exercise'),
+      ];
+
+      return response()->json([
+        'success' => true,
+        'materials' => $enrichedMaterials,
+        'deck' => [
+          'id' => $deck->id,
+          'name' => $deck->name,
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::error('Error enriching study materials', [
+        'error' => $e->getMessage(),
+        'user_id' => $userId,
+        'deck_name' => $deckName
+      ]);
+
+      return response()->json(['error' => 'Failed to enrich materials'], 500);
+    }
+  }
+
+  /**
+   * Enrich a specific material type with database IDs
+   */
+  private function enrichMaterialType(array $localMaterials, $studyMaterials, string $type): array
+  {
+    $enriched = [];
+    $dbMaterials = $studyMaterials->where('type', $type);
+
+    foreach ($localMaterials as $localMaterial) {
+      $enrichedMaterial = $localMaterial;
+
+      // Try to find matching database material by content
+      $matchingDbMaterial = $dbMaterials->first(function ($dbMaterial) use ($localMaterial, $type) {
+        $dbContent = $dbMaterial->content;
+
+        if ($type === 'flashcard') {
+          // For flashcards, match by question and answer
+          if (is_array($dbContent) && isset($dbContent['question'], $dbContent['answer'])) {
+            return $dbContent['question'] === ($localMaterial['question'] ?? '') &&
+              $dbContent['answer'] === ($localMaterial['answer'] ?? '');
+          }
+        } elseif ($type === 'quiz') {
+          // For quizzes, match by question
+          if (is_array($dbContent) && isset($dbContent['question'])) {
+            return $dbContent['question'] === ($localMaterial['question'] ?? '');
+          }
+        } elseif ($type === 'exercise') {
+          // For exercises, match by instruction
+          if (is_array($dbContent) && isset($dbContent['instruction'])) {
+            return $dbContent['instruction'] === ($localMaterial['instruction'] ?? '');
+          }
+        }
+
+        return false;
+      });
+
+      if ($matchingDbMaterial) {
+        $enrichedMaterial['id'] = $matchingDbMaterial->id;
+      }
+
+      $enriched[] = $enrichedMaterial;
+    }
+
+    return $enriched;
+  }
 }
