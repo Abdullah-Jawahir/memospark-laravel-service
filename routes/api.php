@@ -12,6 +12,7 @@ use App\Http\Controllers\UserGoalController;
 use App\Http\Controllers\UserAchievementController;
 use App\Http\Controllers\StudyTrackingController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\ProfileController;
 use App\Models\User;
 
 /*
@@ -154,4 +155,11 @@ Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(funct
   Route::put('/users/{id}', [AdminController::class, 'updateUser']);
   Route::put('/users/{id}/deactivate', [AdminController::class, 'deactivateUser']);
   Route::put('/users/{id}/activate', [AdminController::class, 'activateUser']);
+});
+
+// Student profile management routes
+Route::middleware(['supabase.auth'])->prefix('profile')->group(function () {
+  Route::get('/', [ProfileController::class, 'getProfile']);
+  Route::put('/', [ProfileController::class, 'updateProfile']);
+  Route::put('/password', [ProfileController::class, 'updatePassword']);
 });
