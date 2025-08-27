@@ -120,6 +120,25 @@ Route::post('setup-admin', function (Request $request) {
   ]);
 });
 
+// Temporary endpoint to fix admin supabase user ID
+Route::middleware(['supabase.auth'])->post('fix-admin-supabase-id', function (Request $request) {
+  $supabaseUser = $request->get('supabase_user');
+  $localUser = $supabaseUser['local_user'] ?? null;
+
+  if ($localUser && $localUser->user_type === 'admin') {
+    $realSupabaseId = $supabaseUser['id'];
+    $localUser->update(['supabase_user_id' => $realSupabaseId]);
+
+    return response()->json([
+      'message' => 'Admin Supabase user ID updated successfully',
+      'old_id' => 'admin-supabase-id-placeholder',
+      'new_id' => $realSupabaseId
+    ]);
+  }
+
+  return response()->json(['error' => 'Not an admin user'], 403);
+});
+
 // Admin routes - protected by both supabase auth and admin role
 Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(function () {
   Route::get('/overview', [AdminController::class, 'overview']);
