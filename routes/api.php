@@ -90,6 +90,7 @@ Route::middleware('supabase.auth')->group(function () {
   Route::post('study/record-review', [StudyTrackingController::class, 'recordReview']);
   Route::get('study/stats', [StudyTrackingController::class, 'getStats']);
   Route::get('study/recent-activity', [StudyTrackingController::class, 'getRecentActivity']);
+  Route::post('study/enrich-materials', [StudyTrackingController::class, 'enrichMaterials']);
 });
 
 // Test endpoint to verify authentication
