@@ -32,14 +32,20 @@ class StudyTrackingController extends Controller
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
     // Map Supabase user to local users table (int id)
+    $userRole = $supabaseUser['role'] ?? 'student';
     $appUser = User::firstOrCreate(
       ['email' => $supabaseUser['email']],
       [
         'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-        'user_type' => 'student',
+        'user_type' => $userRole,
         'password' => null,
       ]
     );
+
+    // Update user_type if it has changed
+    if ($appUser->user_type !== $userRole) {
+      $appUser->update(['user_type' => $userRole]);
+    }
     $userId = $appUser->id;
 
     // Get the current session ID from the request
@@ -198,14 +204,20 @@ class StudyTrackingController extends Controller
     if (!$supabaseUser || !isset($supabaseUser['email'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
+    $userRole = $supabaseUser['role'] ?? 'student';
     $appUser = User::firstOrCreate(
       ['email' => $supabaseUser['email']],
       [
         'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-        'user_type' => 'student',
+        'user_type' => $userRole,
         'password' => null,
       ]
     );
+
+    // Update user_type if it has changed
+    if ($appUser->user_type !== $userRole) {
+      $appUser->update(['user_type' => $userRole]);
+    }
     $userId = $appUser->id;
 
     // Verify the deck belongs to this user
@@ -239,14 +251,20 @@ class StudyTrackingController extends Controller
     if (!$supabaseUser || !isset($supabaseUser['email'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
+    $userRole = $supabaseUser['role'] ?? 'student';
     $appUser = User::firstOrCreate(
       ['email' => $supabaseUser['email']],
       [
         'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-        'user_type' => 'student',
+        'user_type' => $userRole,
         'password' => null,
       ]
     );
+
+    // Update user_type if it has changed
+    if ($appUser->user_type !== $userRole) {
+      $appUser->update(['user_type' => $userRole]);
+    }
     $userId = $appUser->id;
 
     $today = Carbon::today();
