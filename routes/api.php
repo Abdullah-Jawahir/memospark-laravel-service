@@ -151,4 +151,7 @@ Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(funct
   Route::get('/profile', [AdminController::class, 'getProfile']);
   Route::put('/profile', [AdminController::class, 'updateProfile']);
   Route::put('/users/role', [AdminController::class, 'updateUserRole']);
+  Route::put('/users/{id}', [AdminController::class, 'updateUser']);
+  Route::put('/users/{id}/deactivate', [AdminController::class, 'deactivateUser']);
+  Route::put('/users/{id}/activate', [AdminController::class, 'activateUser']);
 });
