@@ -335,4 +335,84 @@ class AdminController extends Controller
       ]
     ]);
   }
+
+  /**
+   * Update user details
+   */
+  public function updateUser(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $request->validate([
+      'name' => 'required|string|max:255',
+      'email' => 'required|email|unique:users,email,' . $id,
+      'user_type' => 'required|in:student,admin',
+      'points' => 'nullable|integer|min:0',
+    ]);
+
+    $user = User::find($id);
+    if (!$user) {
+      return response()->json(['error' => 'User not found'], 404);
+    }
+
+    $user->update($request->only(['name', 'email', 'user_type', 'points']));
+
+    return response()->json([
+      'message' => 'User updated successfully',
+      'user' => $user->refresh()
+    ]);
+  }
+
+  /**
+   * Deactivate user (we'll add an is_active field)
+   */
+  public function deactivateUser(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $user = User::find($id);
+    if (!$user) {
+      return response()->json(['error' => 'User not found'], 404);
+    }
+
+    // For now, we'll mark them with negative points or add a deactivation timestamp
+    $user->update(['points' => -1]); // Temporary way to mark as deactivated
+
+    return response()->json([
+      'message' => 'User deactivated successfully',
+      'user' => $user->refresh()
+    ]);
+  }
+
+  /**
+   * Activate user
+   */
+  public function activateUser(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $user = User::find($id);
+    if (!$user) {
+      return response()->json(['error' => 'User not found'], 404);
+    }
+
+    // Restore user (set points to 0 if they were -1)
+    if ($user->points === -1) {
+      $user->update(['points' => 0]);
+    }
+
+    return response()->json([
+      'message' => 'User activated successfully',
+      'user' => $user->refresh()
+    ]);
+  }
 }
