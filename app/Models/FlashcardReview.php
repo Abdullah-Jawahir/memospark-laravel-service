@@ -18,6 +18,11 @@ class FlashcardReview extends Model
         'study_time',
     ];
 
+    protected $casts = [
+        'reviewed_at' => 'datetime',
+        'study_time' => 'integer',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);
