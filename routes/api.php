@@ -11,6 +11,8 @@ use App\Http\Controllers\DeckController;
 use App\Http\Controllers\UserGoalController;
 use App\Http\Controllers\UserAchievementController;
 use App\Http\Controllers\StudyTrackingController;
+use App\Http\Controllers\AdminController;
+use App\Models\User;
 
 /*
 |--------------------------------------------------------------------------
@@ -57,6 +59,25 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('dashboard/todays-goal', [DashboardController::class, 'todaysGoal']);
   Route::get('dashboard/achievements', [DashboardController::class, 'achievements']);
 
+  // User profile endpoint - returns role info from our local database
+  Route::get('user/profile', function (Request $request) {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['local_user'])) {
+      return response()->json(['error' => 'User not found'], 401);
+    }
+
+    $localUser = $supabaseUser['local_user'];
+
+    return response()->json([
+      'id' => $localUser->id,
+      'full_name' => $localUser->name,
+      'email' => $localUser->email,
+      'role' => $localUser->user_type, // Use local user_type as role
+      'created_at' => $localUser->created_at,
+      'updated_at' => $localUser->updated_at,
+    ]);
+  });
+
   Route::post('decks', [DeckController::class, 'store']);
   Route::get('decks', [DeckController::class, 'index']);
   Route::get('decks/{deck}/materials', [DeckController::class, 'materials']);
@@ -73,4 +94,42 @@ Route::middleware('supabase.auth')->group(function () {
 // Test endpoint to verify authentication
 Route::get('test-auth', function () {
   return response()->json(['message' => 'Public endpoint working']);
+});
+
+// Setup endpoint to make a user admin (only use this once for initial setup)
+Route::post('setup-admin', function (Request $request) {
+  $request->validate([
+    'email' => 'required|email|exists:users,email',
+    'setup_key' => 'required|string'
+  ]);
+
+  // Simple security check - you should change this key
+  if ($request->setup_key !== 'memospark-admin-setup-2025') {
+    return response()->json(['error' => 'Invalid setup key'], 403);
+  }
+
+  $user = User::where('email', $request->email)->first();
+  $user->update(['user_type' => 'admin']);
+
+  return response()->json([
+    'message' => 'User has been made admin successfully',
+    'user' => [
+      'email' => $user->email,
+      'user_type' => $user->user_type
+    ]
+  ]);
+});
+
+// Admin routes - protected by both supabase auth and admin role
+Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(function () {
+  Route::get('/overview', [AdminController::class, 'overview']);
+  Route::get('/recent-activity', [AdminController::class, 'recentActivity']);
+  Route::get('/user-analytics', [AdminController::class, 'userAnalytics']);
+  Route::get('/users', [AdminController::class, 'getUsers']);
+  Route::get('/system-stats', [AdminController::class, 'systemStats']);
+
+  // Admin profile management
+  Route::get('/profile', [AdminController::class, 'getProfile']);
+  Route::put('/profile', [AdminController::class, 'updateProfile']);
+  Route::put('/users/role', [AdminController::class, 'updateUserRole']);
 });
