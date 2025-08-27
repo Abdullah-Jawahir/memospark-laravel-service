@@ -415,4 +415,73 @@ class AdminController extends Controller
       'user' => $user->refresh()
     ]);
   }
+
+  /**
+   * Update admin password via Supabase
+   */
+  public function updatePassword(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+      'current_password' => 'required|string',
+      'new_password' => 'required|string|min:8|confirmed',
+    ]);
+
+    if ($validator->fails()) {
+      return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    // Debug: Check if service role key is set
+    $serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY');
+    if (!$serviceRoleKey || $serviceRoleKey === 'your_service_role_key_here') {
+      return response()->json([
+        'error' => 'SUPABASE_SERVICE_ROLE_KEY is not properly configured. Please set it in your .env file.'
+      ], 500);
+    }
+
+    try {
+      // First verify current password by attempting to sign in
+      $signInResponse = \Illuminate\Support\Facades\Http::withHeaders([
+        'apikey' => env('SUPABASE_KEY'),
+        'Content-Type' => 'application/json',
+      ])->post(env('SUPABASE_URL') . '/auth/v1/token?grant_type=password', [
+        'email' => $supabaseUser['email'],
+        'password' => $request->current_password,
+      ]);
+
+      if (!$signInResponse->successful()) {
+        return response()->json(['errors' => ['current_password' => ['Current password is incorrect']]], 422);
+      }
+
+      // Update password using Supabase admin API
+      $updateResponse = \Illuminate\Support\Facades\Http::withHeaders([
+        'apikey' => env('SUPABASE_SERVICE_ROLE_KEY'),
+        'Authorization' => 'Bearer ' . env('SUPABASE_SERVICE_ROLE_KEY'),
+        'Content-Type' => 'application/json',
+      ])->put(env('SUPABASE_URL') . '/auth/v1/admin/users/' . $supabaseUser['id'], [
+        'password' => $request->new_password,
+      ]);
+
+      if (!$updateResponse->successful()) {
+        \Illuminate\Support\Facades\Log::error('Admin password update failed', [
+          'status' => $updateResponse->status(),
+          'response' => $updateResponse->body(),
+          'user_id' => $supabaseUser['id']
+        ]);
+        return response()->json([
+          'error' => 'Failed to update password',
+          'details' => $updateResponse->body()
+        ], 500);
+      }
+
+      return response()->json(['message' => 'Password updated successfully']);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Admin password update error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to update password'], 500);
+    }
+  }
 }
