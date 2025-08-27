@@ -41,12 +41,15 @@ class SupabaseAuth
         if (!$localUser) {
           // Create new user with default student role
           $localUser = User::create([
-            'id' => $userId,
+            'supabase_user_id' => $userId,
             'name' => $userData['user_metadata']['full_name'] ?? $email,
             'email' => $email,
             'user_type' => 'student', // Default to student
             'password' => null,
           ]);
+        } else if (!$localUser->supabase_user_id || $localUser->supabase_user_id === 'admin-supabase-id-placeholder') {
+          // Update existing user with supabase_user_id if missing or is placeholder
+          $localUser->update(['supabase_user_id' => $userId]);
         }
 
         // Prepare user data for the request
