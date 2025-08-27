@@ -23,15 +23,21 @@ class DashboardController extends Controller
         $userId = $supabaseUser['id'];
         $today = Carbon::today();
         // Resolve local app user (numeric) for reviews table
+        $userRole = $supabaseUser['role'] ?? 'student';
         $appUser = \App\Models\User::firstOrCreate(
             ['email' => $supabaseUser['email']],
             [
                 'id' => $userId,
                 'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-                'user_type' => 'student',
+                'user_type' => $userRole,
                 'password' => null,
             ]
         );
+
+        // Update user_type if it has changed
+        if ($appUser->user_type !== $userRole) {
+            $appUser->update(['user_type' => $userRole]);
+        }
         $localUserId = $appUser->id;
 
         // Cards studied today
@@ -90,15 +96,21 @@ class DashboardController extends Controller
         }
         $userId = $supabaseUser['id'];
         // Resolve local app user id for reviews
+        $userRole = $supabaseUser['role'] ?? 'student';
         $appUser = \App\Models\User::firstOrCreate(
             ['email' => $supabaseUser['email']],
             [
                 'id' => $userId,
                 'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-                'user_type' => 'student',
+                'user_type' => $userRole,
                 'password' => null,
             ]
         );
+
+        // Update user_type if it has changed
+        if ($appUser->user_type !== $userRole) {
+            $appUser->update(['user_type' => $userRole]);
+        }
         $localUserId = $appUser->id;
         $decks = Deck::where('user_id', $userId)
             ->with(['studyMaterials.reviews' => function ($q) use ($localUserId) {
@@ -230,18 +242,20 @@ class DashboardController extends Controller
 
         if (!$user) {
             // Create new user if none exists
+            $userRole = $supabaseUser['role'] ?? 'student';
             $user = \App\Models\User::create([
                 'id' => $userId,
                 'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
                 'email' => $supabaseUser['email'],
-                'user_type' => 'student',
+                'user_type' => $userRole,
                 'password' => null
             ]);
         } else {
             // Update existing user with latest info
+            $userRole = $supabaseUser['role'] ?? 'student';
             $user->update([
                 'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
-                'user_type' => 'student'
+                'user_type' => $userRole
             ]);
         }
 
@@ -271,18 +285,20 @@ class DashboardController extends Controller
 
         if (!$user) {
             // Create new user if none exists
+            $userRole = $supabaseUser['role'] ?? 'student';
             $user = \App\Models\User::create([
                 'id' => $userId,
                 'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
                 'email' => $supabaseUser['email'],
-                'user_type' => 'student',
+                'user_type' => $userRole,
                 'password' => null
             ]);
         } else {
             // Update existing user with latest info
+            $userRole = $supabaseUser['role'] ?? 'student';
             $user->update([
                 'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
-                'user_type' => 'student'
+                'user_type' => $userRole
             ]);
         }
 
