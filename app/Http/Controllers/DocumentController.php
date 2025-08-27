@@ -25,15 +25,31 @@ class DocumentController extends Controller
 
   public function upload(Request $request)
   {
-    $request->validate([
-      'file' => 'required|file|mimes:pdf,docx,pptx,jpg,jpeg,png|max:10240', // 10MB max
-      'language' => 'required|in:en,si,ta',
-      'is_guest' => 'required|in:0,1,true,false',
-      'deck_name' => 'required|string|max:255',
-      'card_types' => 'nullable|array',
-      'card_types.*' => 'in:flashcard,exercise,quiz',
-      'difficulty' => 'nullable|in:beginner,intermediate,advanced'
+    \Log::info('DocumentController::upload called', [
+      'method' => $request->method(),
+      'path' => $request->path(),
+      'is_guest' => $request->input('is_guest'),
+      'has_file' => $request->hasFile('file'),
+      'all_input' => $request->all()
     ]);
+
+    try {
+      $request->validate([
+        'file' => 'required|file|mimes:pdf,docx,pptx,jpg,jpeg,png|max:10240', // 10MB max
+        'language' => 'required|in:en,si,ta',
+        'is_guest' => 'required|in:0,1,true,false',
+        'deck_name' => 'required|string|max:255',
+        'card_types' => 'nullable|array',
+        'card_types.*' => 'in:flashcard,exercise,quiz',
+        'difficulty' => 'nullable|in:beginner,intermediate,advanced'
+      ]);
+    } catch (\Exception $e) {
+      \Log::error('Validation failed in upload', [
+        'error' => $e->getMessage(),
+        'input' => $request->all()
+      ]);
+      throw $e;
+    }
 
     $file = $request->file('file');
     $cardTypes = $request->card_types ?? ['flashcard'];
@@ -97,6 +113,8 @@ class DocumentController extends Controller
         'from_cache' => true
       ], 202);
     }
+    // Note: 'failed' status is now handled by clearing cache in FileProcessCacheService
+    // so we should not reach this condition anymore, but keeping it for safety
     if ($cacheResult['status'] === 'failed') {
       return response()->json([
         'message' => 'Processing failed. Please try again.',
