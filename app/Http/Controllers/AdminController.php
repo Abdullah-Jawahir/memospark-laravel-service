@@ -184,7 +184,7 @@ class AdminController extends Controller
     $perPage = $request->get('per_page', 15);
     $search = $request->get('search');
 
-    $query = User::query();
+    $query = User::query()->withCount('decks');
 
     if ($search) {
       $query->where(function ($q) use ($search) {
