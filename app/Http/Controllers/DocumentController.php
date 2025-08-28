@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ProcessDocument;
+use App\Models\Deck;
 use App\Models\Document;
 use App\Models\GuestUpload;
-use App\Services\FastApiService;
-use App\Services\FileProcessCacheService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Http\Request;
+use App\Jobs\ProcessDocument;
+use App\Services\FastApiService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use App\Services\FileProcessCacheService;
 
 class DocumentController extends Controller
 {
@@ -25,7 +27,7 @@ class DocumentController extends Controller
 
   public function upload(Request $request)
   {
-    \Log::info('DocumentController::upload called', [
+    Log::info('DocumentController::upload called', [
       'method' => $request->method(),
       'path' => $request->path(),
       'is_guest' => $request->input('is_guest'),
@@ -44,7 +46,7 @@ class DocumentController extends Controller
         'difficulty' => 'nullable|in:beginner,intermediate,advanced'
       ]);
     } catch (\Exception $e) {
-      \Log::error('Validation failed in upload', [
+      Log::error('Validation failed in upload', [
         'error' => $e->getMessage(),
         'input' => $request->all()
       ]);
@@ -64,7 +66,7 @@ class DocumentController extends Controller
     if ($cacheResult['status'] === 'done') {
       $document = null;
       if ($cacheResult['document_id']) {
-        $document = \App\Models\Document::find($cacheResult['document_id']);
+        $document = Document::find($cacheResult['document_id']);
       }
       if ($document) {
         // Check for missing types
@@ -134,7 +136,7 @@ class DocumentController extends Controller
     }
     $deck = null;
     if ($userId) {
-      $deck = \App\Models\Deck::firstOrCreate([
+      $deck = Deck::firstOrCreate([
         'user_id' => $userId,
         'name' => $request->deck_name
       ]);
@@ -194,6 +196,27 @@ class DocumentController extends Controller
         'status' => $document->status,
         'metadata' => $document->metadata
       ]);
+
+      // If document processing failed, perform cleanup before returning the error
+      if ($document->status === 'failed') {
+        $errorMsg = $document->metadata['error'] ?? 'Processing failed.';
+        try {
+          $this->cleanupFailedDocument($document);
+          Log::channel('fastapi')->info('Cleanup completed for failed document', ['document_id' => $id]);
+        } catch (\Exception $e) {
+          Log::channel('fastapi')->error('Cleanup for failed document encountered an error', [
+            'document_id' => $id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+          ]);
+          // proceed to return the original error even if cleanup partially failed
+        }
+
+        return response()->json([
+          'status' => 'failed',
+          'message' => $errorMsg
+        ], 500);
+      }
 
       // Get card_types from request or document metadata
       $cardTypes = $request->input('card_types', $document->metadata['card_types'] ?? ['flashcard']);
@@ -272,5 +295,59 @@ class DocumentController extends Controller
       ]);
       throw $e;
     }
+  }
+
+  /**
+   * Cleanup a failed document and its related records/files.
+   * This will delete study materials, cache entries, guest uploads, stored file,
+   * the document record and its deck if the deck has no other documents.
+   */
+  private function cleanupFailedDocument(Document $document): void
+  {
+    DB::transaction(function () use ($document) {
+      // Delete study materials
+      \App\Models\StudyMaterial::where('document_id', $document->id)->delete();
+
+      // Delete file processing cache entries
+      \App\Models\FileProcessCache::where('document_id', $document->id)->delete();
+
+      // Delete guest upload record if any
+      if ($document->guestUpload) {
+        $document->guestUpload()->delete();
+      }
+
+      // Delete storage file
+      try {
+        if ($document->storage_path && Storage::disk('private')->exists($document->storage_path)) {
+          Storage::disk('private')->delete($document->storage_path);
+        }
+      } catch (\Exception $e) {
+        // Log and continue cleanup
+        Log::channel('fastapi')->warning('Failed to delete storage file for failed document', [
+          'document_id' => $document->id,
+          'storage_path' => $document->storage_path,
+          'error' => $e->getMessage()
+        ]);
+      }
+
+      // Remove the document record (use forceDelete to bypass soft deletes)
+      try {
+        $document->forceDelete();
+      } catch (\Exception $e) {
+        // If forceDelete fails, attempt regular delete
+        $document->delete();
+      }
+
+      // If deck exists and has no other documents, delete the deck
+      if ($document->deck_id) {
+        $deck = Deck::find($document->deck_id);
+        if ($deck) {
+          $remainingDocs = Document::where('deck_id', $deck->id)->count();
+          if ($remainingDocs === 0) {
+            $deck->delete();
+          }
+        }
+      }
+    });
   }
 }

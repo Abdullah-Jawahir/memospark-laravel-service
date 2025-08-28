@@ -85,6 +85,38 @@ class ProcessDocument implements ShouldQueue
                         'error' => $result['message'] ?? 'Processing failed.'
                     ])
                 ]);
+                // Cleanup failed document and related records/files
+                try {
+                    // Replicate controller cleanup logic inline to avoid coupling
+                    \App\Models\StudyMaterial::where('document_id', $document->id)->delete();
+                    \App\Models\FileProcessCache::where('document_id', $document->id)->delete();
+                    if ($document->guestUpload) {
+                        $document->guestUpload()->delete();
+                    }
+                    if ($document->storage_path && Storage::disk('private')->exists($document->storage_path)) {
+                        Storage::disk('private')->delete($document->storage_path);
+                    }
+                    try {
+                        $document->forceDelete();
+                    } catch (\Exception $e) {
+                        $document->delete();
+                    }
+                    if ($document->deck_id) {
+                        $deck = \App\Models\Deck::find($document->deck_id);
+                        if ($deck) {
+                            $remainingDocs = \App\Models\Document::where('deck_id', $deck->id)->count();
+                            if ($remainingDocs === 0) {
+                                $deck->delete();
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::channel('fastapi')->error('Cleanup during job failure encountered an error', [
+                        'document_id' => $document->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
             }
 
             // Clean up temporary file
