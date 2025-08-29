@@ -119,7 +119,7 @@ class ProfileController extends Controller
             $signInResponse = Http::withHeaders([
                 'apikey' => env('SUPABASE_KEY'),
                 'Content-Type' => 'application/json',
-            ])->post(env('SUPABASE_URL') . '/auth/v1/token?grant_type=password', [
+            ])->post(rtrim(config('services.supabase.url'), '/') . '/auth/v1/token?grant_type=password', [
                 'email' => $supabaseUser['email'],
                 'password' => $request->current_password,
             ]);
@@ -133,7 +133,7 @@ class ProfileController extends Controller
                 'apikey' => env('SUPABASE_SERVICE_ROLE_KEY'),
                 'Authorization' => 'Bearer ' . env('SUPABASE_SERVICE_ROLE_KEY'),
                 'Content-Type' => 'application/json',
-            ])->put(env('SUPABASE_URL') . '/auth/v1/admin/users/' . $supabaseUser['id'], [
+            ])->put(rtrim(config('services.supabase.url'), '/') . '/auth/v1/admin/users/' . $supabaseUser['id'], [
                 'password' => $request->new_password,
             ]);
 
@@ -165,7 +165,7 @@ class ProfileController extends Controller
             'apikey' => env('SUPABASE_SERVICE_ROLE_KEY'),
             'Authorization' => 'Bearer ' . env('SUPABASE_SERVICE_ROLE_KEY'),
             'Content-Type' => 'application/json',
-        ])->put(env('SUPABASE_URL') . '/auth/v1/admin/users/' . $userId, $data);
+        ])->put(rtrim(config('services.supabase.url'), '/') . '/auth/v1/admin/users/' . $userId, $data);
 
         if (!$response->successful()) {
             throw new \Exception('Failed to update Supabase user: ' . $response->body());

@@ -20,9 +20,9 @@ class SupabaseAuth
     try {
       // Verify the token with Supabase
       $response = Http::withHeaders([
-        'apikey' => env('SUPABASE_KEY'),
+        'apikey' => config('services.supabase.key'),
         'Authorization' => 'Bearer ' . $token
-      ])->get(env('SUPABASE_URL') . '/auth/v1/user');
+      ])->get(rtrim(config('services.supabase.url'), '/') . '/auth/v1/user');
 
       if ($response->successful()) {
         $userData = $response->json();
