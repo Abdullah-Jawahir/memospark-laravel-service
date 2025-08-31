@@ -105,6 +105,13 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('search-flashcards/search/{searchId}', [SearchFlashcardsController::class, 'getSearchDetails']);
   Route::get('search-flashcards/recent', [SearchFlashcardsController::class, 'getRecentSearches']);
   Route::get('search-flashcards/stats', [SearchFlashcardsController::class, 'getSearchStats']);
+
+  // Search Flashcards Study Session endpoints
+  Route::post('search-flashcards/study/start-session', [SearchFlashcardsController::class, 'startStudySession']);
+  Route::post('search-flashcards/study/record-interaction', [SearchFlashcardsController::class, 'recordStudyInteraction']);
+  Route::post('search-flashcards/study/complete-session', [SearchFlashcardsController::class, 'completeStudySession']);
+  Route::get('search-flashcards/study/session/{sessionId}', [SearchFlashcardsController::class, 'getStudySessionDetails']);
+  Route::get('search-flashcards/study/stats', [SearchFlashcardsController::class, 'getStudyStats']);
 });
 
 // Test endpoint to verify authentication

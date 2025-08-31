@@ -530,4 +530,442 @@ class SearchFlashcardsController extends Controller
       ], 500);
     }
   }
+
+  /**
+   * Start a study session for search flashcards
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function startStudySession(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'search_id' => 'required|integer|exists:search_flashcard_searches,id',
+        'total_flashcards' => 'required|integer|min:1',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$userId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $searchId = $request->input('search_id');
+      $totalFlashcards = $request->input('total_flashcards');
+
+      // Verify the search belongs to this user
+      $search = SearchFlashcardSearch::forUser($userId)->find($searchId);
+      if (!$search) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Search not found or access denied'
+        ], 404);
+      }
+
+      // Create study session
+      $studySession = \App\Models\SearchFlashcardStudySession::create([
+        'search_id' => $searchId,
+        'user_id' => $userId,
+        'started_at' => now(),
+        'total_flashcards' => $totalFlashcards,
+        'studied_flashcards' => 0,
+        'correct_answers' => 0,
+        'incorrect_answers' => 0,
+        'study_data' => []
+      ]);
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Study session started successfully',
+        'data' => [
+          'session_id' => $studySession->id,
+          'search_id' => $searchId,
+          'topic' => $search->topic,
+          'total_flashcards' => $totalFlashcards,
+          'started_at' => $studySession->started_at
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in startStudySession controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to start study session',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Record a flashcard study interaction
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function recordStudyInteraction(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'study_session_id' => 'required|integer|exists:search_flashcard_study_sessions,id',
+        'flashcard_id' => 'required|integer|exists:search_flashcard_results,id',
+        'result' => 'required|in:correct,incorrect,skipped',
+        'time_spent' => 'required|integer|min:1',
+        'attempts' => 'nullable|integer|min:1',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$userId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $studySessionId = $request->input('study_session_id');
+      $flashcardId = $request->input('flashcard_id');
+      $result = $request->input('result');
+      $timeSpent = $request->input('time_spent');
+      $attempts = $request->input('attempts', 1);
+
+      // Verify the study session belongs to this user
+      $studySession = \App\Models\SearchFlashcardStudySession::where('id', $studySessionId)
+        ->where('user_id', $userId)
+        ->first();
+
+      if (!$studySession) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Study session not found or access denied'
+        ], 404);
+      }
+
+      // Verify the flashcard belongs to the search in this study session
+      $flashcard = \App\Models\SearchFlashcardResult::where('id', $flashcardId)
+        ->where('search_id', $studySession->search_id)
+        ->first();
+
+      if (!$flashcard) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Flashcard not found or access denied'
+        ], 404);
+      }
+
+      // Create study record
+      $studyRecord = \App\Models\SearchFlashcardStudyRecord::create([
+        'study_session_id' => $studySessionId,
+        'flashcard_id' => $flashcardId,
+        'result' => $result,
+        'time_spent' => $timeSpent,
+        'attempts' => $attempts,
+        'answered_at' => now()
+      ]);
+
+      // Update study session statistics
+      $studySession->increment('studied_flashcards');
+      if ($result === 'correct') {
+        $studySession->increment('correct_answers');
+      } elseif ($result === 'incorrect') {
+        $studySession->increment('incorrect_answers');
+      }
+
+      // Check if session is complete
+      $isComplete = $studySession->studied_flashcards >= $studySession->total_flashcards;
+      if ($isComplete && !$studySession->completed_at) {
+        $studySession->update(['completed_at' => now()]);
+      }
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Study interaction recorded successfully',
+        'data' => [
+          'record_id' => $studyRecord->id,
+          'result' => $result,
+          'time_spent' => $timeSpent,
+          'attempts' => $attempts,
+          'answered_at' => $studyRecord->answered_at,
+          'session_complete' => $isComplete,
+          'session_stats' => [
+            'studied_flashcards' => $studySession->studied_flashcards,
+            'total_flashcards' => $studySession->total_flashcards,
+            'correct_answers' => $studySession->correct_answers,
+            'incorrect_answers' => $studySession->incorrect_answers,
+            'completion_percentage' => $studySession->completion_percentage,
+            'accuracy_percentage' => $studySession->accuracy_percentage
+          ]
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in recordStudyInteraction controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to record study interaction',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Complete a study session
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function completeStudySession(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'study_session_id' => 'required|integer|exists:search_flashcard_study_sessions,id',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$userId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $studySessionId = $request->input('study_session_id');
+
+      // Verify the study session belongs to this user
+      $studySession = \App\Models\SearchFlashcardStudySession::where('id', $studySessionId)
+        ->where('user_id', $userId)
+        ->first();
+
+      if (!$studySession) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Study session not found or access denied'
+        ], 404);
+      }
+
+      // Complete the session
+      $studySession->update([
+        'completed_at' => now()
+      ]);
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Study session completed successfully',
+        'data' => [
+          'session_id' => $studySession->id,
+          'completed_at' => $studySession->completed_at,
+          'final_stats' => [
+            'studied_flashcards' => $studySession->studied_flashcards,
+            'total_flashcards' => $studySession->total_flashcards,
+            'correct_answers' => $studySession->correct_answers,
+            'incorrect_answers' => $studySession->incorrect_answers,
+            'completion_percentage' => $studySession->completion_percentage,
+            'accuracy_percentage' => $studySession->accuracy_percentage,
+            'duration_seconds' => $studySession->duration
+          ]
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in completeStudySession controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to complete study session',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Get study session details
+   *
+   * @param int $sessionId
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function getStudySessionDetails(int $sessionId, Request $request): JsonResponse
+  {
+    try {
+      $supabaseUser = $request->get('supabase_user');
+      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$userId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $studySession = \App\Models\SearchFlashcardStudySession::where('id', $sessionId)
+        ->where('user_id', $userId)
+        ->with(['search', 'studyRecords.flashcard'])
+        ->first();
+
+      if (!$studySession) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Study session not found or access denied'
+        ], 404);
+      }
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Study session details retrieved successfully',
+        'data' => $studySession
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in getStudySessionDetails controller', [
+        'session_id' => $sessionId,
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to retrieve study session details',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Get user's search flashcard study statistics
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function getStudyStats(Request $request): JsonResponse
+  {
+    try {
+      $supabaseUser = $request->get('supabase_user');
+      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$userId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $days = $request->input('days', 30);
+
+      // Get total study sessions
+      $totalSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)->count();
+      $completedSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+        ->whereNotNull('completed_at')
+        ->count();
+
+      // Get recent study sessions
+      $recentSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+        ->where('created_at', '>=', now()->subDays($days))
+        ->count();
+
+      // Get total flashcards studied
+      $totalFlashcardsStudied = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+        ->sum('studied_flashcards');
+
+      // Get accuracy statistics
+      $totalCorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+        ->sum('correct_answers');
+      $totalIncorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+        ->sum('incorrect_answers');
+
+      $overallAccuracy = ($totalCorrect + $totalIncorrect) > 0
+        ? round(($totalCorrect / ($totalCorrect + $totalIncorrect)) * 100, 2)
+        : 0;
+
+      // Get most studied topics
+      $popularTopics = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+        ->with('search')
+        ->get()
+        ->groupBy('search.topic')
+        ->map(function ($sessions, $topic) {
+          return [
+            'topic' => $topic,
+            'sessions_count' => $sessions->count(),
+            'total_flashcards' => $sessions->sum('studied_flashcards'),
+            'average_accuracy' => $sessions->avg('accuracy_percentage')
+          ];
+        })
+        ->sortByDesc('sessions_count')
+        ->take(5)
+        ->values();
+
+      // Get study time statistics
+      $totalStudyTime = \App\Models\SearchFlashcardStudyRecord::whereHas('studySession', function ($query) use ($userId) {
+        $query->where('user_id', $userId);
+      })->sum('time_spent');
+
+      $stats = [
+        'total_sessions' => $totalSessions,
+        'completed_sessions' => $completedSessions,
+        'recent_sessions' => $recentSessions,
+        'total_flashcards_studied' => $totalFlashcardsStudied,
+        'overall_accuracy' => $overallAccuracy,
+        'total_correct_answers' => $totalCorrect,
+        'total_incorrect_answers' => $totalIncorrect,
+        'total_study_time_seconds' => $totalStudyTime,
+        'total_study_time_formatted' => gmdate('H:i:s', $totalStudyTime),
+        'popular_topics' => $popularTopics,
+        'period_days' => $days
+      ];
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Study statistics retrieved successfully',
+        'data' => $stats
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in getStudyStats controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to retrieve study statistics',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
 }
