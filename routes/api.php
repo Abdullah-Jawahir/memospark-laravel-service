@@ -13,6 +13,7 @@ use App\Http\Controllers\UserAchievementController;
 use App\Http\Controllers\StudyTrackingController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SearchFlashcardsController;
 use App\Models\User;
 
 /*
@@ -92,11 +93,38 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('study/stats', [StudyTrackingController::class, 'getStats']);
   Route::get('study/recent-activity', [StudyTrackingController::class, 'getRecentActivity']);
   Route::post('study/enrich-materials', [StudyTrackingController::class, 'enrichMaterials']);
+
+  // Search Flashcards endpoints
+  Route::post('search-flashcards/generate', [SearchFlashcardsController::class, 'generateFlashcards']);
+  Route::get('search-flashcards/job/{jobId}/status', [SearchFlashcardsController::class, 'checkJobStatus']);
+  Route::get('search-flashcards/topics', [SearchFlashcardsController::class, 'getSuggestedTopics']);
+  Route::get('search-flashcards/user-jobs', [SearchFlashcardsController::class, 'getUserJobs']);
+
+  // Search History endpoints
+  Route::get('search-flashcards/history', [SearchFlashcardsController::class, 'getSearchHistory']);
+  Route::get('search-flashcards/search/{searchId}', [SearchFlashcardsController::class, 'getSearchDetails']);
+  Route::get('search-flashcards/recent', [SearchFlashcardsController::class, 'getRecentSearches']);
+  Route::get('search-flashcards/stats', [SearchFlashcardsController::class, 'getSearchStats']);
 });
 
 // Test endpoint to verify authentication
 Route::get('test-auth', function () {
   return response()->json(['message' => 'Public endpoint working']);
+});
+
+// Public health check endpoint (no authentication required)
+Route::get('search-flashcards/health', [SearchFlashcardsController::class, 'checkHealth']);
+
+// Test routes with test authentication (for testing purposes only)
+Route::middleware(['throttle:api', 'test.auth'])->prefix('test')->group(function () {
+  Route::post('search-flashcards/generate', [SearchFlashcardsController::class, 'generateFlashcards']);
+  Route::get('search-flashcards/job/{jobId}/status', [SearchFlashcardsController::class, 'checkJobStatus']);
+  Route::get('search-flashcards/topics', [SearchFlashcardsController::class, 'getSuggestedTopics']);
+  Route::get('search-flashcards/user-jobs', [SearchFlashcardsController::class, 'getUserJobs']);
+  Route::get('search-flashcards/history', [SearchFlashcardsController::class, 'getSearchHistory']);
+  Route::get('search-flashcards/search/{searchId}', [SearchFlashcardsController::class, 'getSearchDetails']);
+  Route::get('search-flashcards/recent', [SearchFlashcardsController::class, 'getRecentSearches']);
+  Route::get('search-flashcards/stats', [SearchFlashcardsController::class, 'getSearchStats']);
 });
 
 // Setup endpoint to make a user admin (only use this once for initial setup)

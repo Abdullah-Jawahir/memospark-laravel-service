@@ -1,0 +1,335 @@
+{
+    "info": {
+        "_postman_id": "search-flashcards-api",
+        "name": "Search Flashcards API",
+        "description": "Complete API collection for testing Search Flashcards endpoints",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [{
+            "name": "Health Check",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/health",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "health"]
+                },
+                "description": "Check the health status of the FastAPI search flashcards service"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Suggested Topics",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/topics",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "topics"]
+                },
+                "description": "Get a list of suggested educational topics for flashcard generation"
+            },
+            "response": []
+        },
+        {
+            "name": "Generate Flashcards",
+            "request": {
+                "method": "POST",
+                "header": [{
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"topic\": \"Python Programming\",\n  \"description\": \"Basic concepts and syntax\",\n  \"difficulty\": \"beginner\",\n  \"count\": 10\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/generate",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "generate"]
+                },
+                "description": "Start a background job to generate flashcards based on a search topic"
+            },
+            "response": []
+        },
+        {
+            "name": "Check Job Status",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/job/{{job_id}}/status",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "job", "{{job_id}}", "status"],
+                    "variable": [{
+                        "key": "job_id",
+                        "value": "your-job-id-here",
+                        "description": "Replace with actual job ID from generate response"
+                    }]
+                },
+                "description": "Check the status of a flashcard generation job"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Search History",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/history?per_page=10&page=1",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "history"],
+                    "query": [{
+                            "key": "per_page",
+                            "value": "10",
+                            "description": "Number of results per page (1-100)"
+                        },
+                        {
+                            "key": "page",
+                            "value": "1",
+                            "description": "Page number"
+                        },
+                        {
+                            "key": "status",
+                            "value": "completed",
+                            "description": "Filter by status (optional): queued, processing, completed, failed"
+                        },
+                        {
+                            "key": "topic",
+                            "value": "python",
+                            "description": "Filter by topic (optional, partial match)"
+                        }
+                    ]
+                },
+                "description": "Get the complete search history for the authenticated user with pagination and filtering"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Search Details",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/search/{{search_id}}",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "search", "{{search_id}}"],
+                    "variable": [{
+                        "key": "search_id",
+                        "value": "1",
+                        "description": "Replace with actual search ID from history"
+                    }]
+                },
+                "description": "Get detailed information about a specific search, including all generated flashcards and study sessions"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Recent Searches",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/recent?limit=5&days=7",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "recent"],
+                    "query": [{
+                            "key": "limit",
+                            "value": "5",
+                            "description": "Number of recent searches to retrieve (1-20)"
+                        },
+                        {
+                            "key": "days",
+                            "value": "7",
+                            "description": "Number of days to look back"
+                        }
+                    ]
+                },
+                "description": "Get recent completed searches for the authenticated user"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Search Statistics",
+            "request": {
+                "method": "GET",
+                "header": [{
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/stats?days=30",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "stats"],
+                    "query": [{
+                        "key": "days",
+                        "value": "30",
+                        "description": "Number of days to include in recent statistics"
+                    }]
+                },
+                "description": "Get comprehensive statistics about the user's search and learning activities"
+            },
+            "response": []
+        },
+        {
+            "name": "Test Invalid Data",
+            "request": {
+                "method": "POST",
+                "header": [{
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Accept",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "supabase_user",
+                        "value": "test-user-123",
+                        "description": "Test user ID for authentication"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"topic\": \"ab\",\n  \"count\": 25\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/generate",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "generate"]
+                },
+                "description": "Test validation with invalid data (topic too short, count too high)"
+            },
+            "response": []
+        },
+        {
+            "name": "Test No Authentication",
+            "request": {
+                "method": "GET",
+                "header": [{
+                    "key": "Accept",
+                    "value": "application/json"
+                }],
+                "url": {
+                    "raw": "{{base_url}}/search-flashcards/history",
+                    "host": ["{{base_url}}"],
+                    "path": ["search-flashcards", "history"]
+                },
+                "description": "Test authentication requirement (should return 401)"
+            },
+            "response": []
+        }
+    ],
+    "event": [{
+        "listen": "prerequest",
+        "script": {
+            "type": "text/javascript",
+            "exec": [
+                "// Set default headers for all requests",
+                "pm.request.headers.add({\n    key: 'supabase_user',\n    value: 'test-user-' + Date.now()\n});"
+            ]
+        }
+    }],
+    "variable": [{
+            "key": "base_url",
+            "value": "http://localhost:8000/api",
+            "type": "string",
+            "description": "Base URL for the Laravel API"
+        },
+        {
+            "key": "job_id",
+            "value": "your-job-id-here",
+            "type": "string",
+            "description": "Job ID from flashcard generation response"
+        },
+        {
+            "key": "search_id",
+            "value": "1",
+            "type": "string",
+            "description": "Search ID from history response"
+        }
+    ]
+}
