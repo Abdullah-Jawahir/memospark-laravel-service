@@ -77,4 +77,9 @@ class User extends Authenticatable
     {
         return $this->hasManyThrough(StudyMaterial::class, Deck::class);
     }
+
+    public function searchFlashcardDifficultCards()
+    {
+        return $this->hasMany(SearchFlashcardDifficultCard::class);
+    }
 }
