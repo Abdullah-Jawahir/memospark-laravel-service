@@ -40,20 +40,34 @@ class DashboardController extends Controller
         }
         $localUserId = $appUser->id;
 
-        // Cards studied today
-        $cardsStudiedToday = FlashcardReview::where('user_id', $localUserId)
+        // Cards studied today - combine regular flashcards and search flashcards
+        $regularCardsToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
 
-        // Current streak (days in a row with at least one review)
-        $dates = FlashcardReview::where('user_id', $localUserId)
+        $searchCardsToday = \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
+            ->whereDate('reviewed_at', $today)
+            ->count();
+
+        $cardsStudiedToday = $regularCardsToday + $searchCardsToday;
+
+        // Current streak (days in a row with at least one review from either regular or search flashcards)
+        $regularDates = FlashcardReview::where('user_id', $localUserId)
             ->selectRaw('DATE(reviewed_at) as date')
             ->distinct()
-            ->orderByDesc('date')
             ->pluck('date');
+
+        $searchDates = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            ->selectRaw('DATE(reviewed_at) as date')
+            ->distinct()
+            ->pluck('date');
+
+        // Combine and sort dates from both types of reviews
+        $allDates = $regularDates->merge($searchDates)->unique()->sort()->reverse()->values();
+
         $streak = 0;
         $current = $today->copy();
-        foreach ($dates as $date) {
+        foreach ($allDates as $date) {
             if ($date == $current->toDateString()) {
                 $streak++;
                 $current->subDay();
@@ -71,10 +85,16 @@ class DashboardController extends Controller
             ->count('study_material_id');
         $overallProgress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
 
-        // Study time today (sum of actual study time from reviews)
-        $studyTimeSeconds = FlashcardReview::where('user_id', $localUserId)
+        // Study time today (sum of actual study time from both regular and search flashcard reviews)
+        $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->sum('study_time');
+
+        $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            ->whereDate('reviewed_at', $today)
+            ->sum('study_time');
+
+        $studyTimeSeconds = $regularStudyTime + $searchStudyTime;
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
         $hours = intdiv($studyTimeMinutes, 60);
         $minutes = $studyTimeMinutes % 60;
@@ -162,9 +182,29 @@ class DashboardController extends Controller
         $userId = $supabaseUser['id'];
         $today = Carbon::today();
         $goal = UserGoal::where('user_id', $userId)->latest()->first();
-        $cardsStudiedToday = FlashcardReview::where('user_id', $userId)
+
+        // Resolve local user ID for regular flashcard reviews
+        $appUser = \App\Models\User::firstOrCreate(
+            ['email' => $supabaseUser['email']],
+            [
+                'id' => $userId,
+                'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
+                'user_type' => $supabaseUser['role'] ?? 'student',
+                'password' => null,
+            ]
+        );
+        $localUserId = $appUser->id;
+
+        // Cards studied today - combine regular flashcards and search flashcards
+        $regularCardsToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
+
+        $searchCardsToday = \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
+            ->whereDate('reviewed_at', $today)
+            ->count();
+
+        $cardsStudiedToday = $regularCardsToday + $searchCardsToday;
         $dailyGoal = $goal ? $goal->daily_goal : 50;
         $remaining = max(0, $dailyGoal - $cardsStudiedToday);
 
@@ -307,20 +347,34 @@ class DashboardController extends Controller
         // Use local app user id for review stats
         $localUserId = $user->id;
 
-        // Cards studied today
-        $cardsStudiedToday = FlashcardReview::where('user_id', $localUserId)
+        // Cards studied today - combine regular flashcards and search flashcards
+        $regularCardsToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
 
-        // Current streak
-        $dates = FlashcardReview::where('user_id', $localUserId)
+        $searchCardsToday = \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
+            ->whereDate('reviewed_at', $today)
+            ->count();
+
+        $cardsStudiedToday = $regularCardsToday + $searchCardsToday;
+
+        // Current streak (days in a row with at least one review from either regular or search flashcards)
+        $regularDates = FlashcardReview::where('user_id', $localUserId)
             ->selectRaw('DATE(reviewed_at) as date')
             ->distinct()
-            ->orderByDesc('date')
             ->pluck('date');
+
+        $searchDates = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            ->selectRaw('DATE(reviewed_at) as date')
+            ->distinct()
+            ->pluck('date');
+
+        // Combine and sort dates from both types of reviews
+        $allDates = $regularDates->merge($searchDates)->unique()->sort()->reverse()->values();
+
         $streak = 0;
         $current = $today->copy();
-        foreach ($dates as $date) {
+        foreach ($allDates as $date) {
             if ($date == $current->toDateString()) {
                 $streak++;
                 $current->subDay();
@@ -338,10 +392,16 @@ class DashboardController extends Controller
             ->count('study_material_id');
         $overallProgress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
 
-        // Study time today
-        $studyTimeSeconds = FlashcardReview::where('user_id', $localUserId)
+        // Study time today (combine regular and search flashcard study time)
+        $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->sum('study_time');
+
+        $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            ->whereDate('reviewed_at', $today)
+            ->sum('study_time');
+
+        $studyTimeSeconds = $regularStudyTime + $searchStudyTime;
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
         $hours = intdiv($studyTimeMinutes, 60);
         $minutes = $studyTimeMinutes % 60;
