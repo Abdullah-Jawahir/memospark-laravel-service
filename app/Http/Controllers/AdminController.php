@@ -9,6 +9,7 @@ use App\Models\Document;
 use App\Models\FlashcardReview;
 use App\Models\StudyMaterial;
 use App\Models\UserGoal;
+use App\Models\GoalType;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -626,6 +627,257 @@ class AdminController extends Controller
     } catch (\Exception $e) {
       \Illuminate\Support\Facades\Log::error('Update default goals error: ' . $e->getMessage());
       return response()->json(['error' => 'Failed to update default goals'], 500);
+    }
+  }
+
+  /**
+   * Get all goal types
+   */
+  public function getGoalTypes(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      $goalTypes = GoalType::orderBy('category')
+        ->orderBy('name')
+        ->get();
+
+      return response()->json($goalTypes);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Get goal types error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to fetch goal types'], 500);
+    }
+  }
+
+  /**
+   * Create a new goal type
+   */
+  public function createGoalType(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $request->validate([
+      'name' => 'required|string|max:255',
+      'description' => 'nullable|string',
+      'unit' => 'required|string|max:50',
+      'category' => 'required|in:study,engagement,achievement,time',
+      'default_value' => 'required|integer|min:0',
+      'min_value' => 'required|integer|min:0',
+      'max_value' => 'required|integer|min:1'
+    ]);
+
+    try {
+      $goalType = GoalType::create([
+        'name' => $request->name,
+        'description' => $request->description,
+        'unit' => $request->unit,
+        'category' => $request->category,
+        'default_value' => $request->default_value,
+        'min_value' => $request->min_value,
+        'max_value' => $request->max_value,
+        'is_active' => true
+      ]);
+
+      return response()->json($goalType, 201);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Create goal type error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to create goal type'], 500);
+    }
+  }
+
+  /**
+   * Update a goal type
+   */
+  public function updateGoalType(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $request->validate([
+      'name' => 'required|string|max:255',
+      'description' => 'nullable|string',
+      'unit' => 'required|string|max:50',
+      'category' => 'required|in:study,engagement,achievement,time',
+      'default_value' => 'required|integer|min:0',
+      'min_value' => 'required|integer|min:0',
+      'max_value' => 'required|integer|min:1'
+    ]);
+
+    try {
+      $goalType = GoalType::findOrFail($id);
+
+      $goalType->update([
+        'name' => $request->name,
+        'description' => $request->description,
+        'unit' => $request->unit,
+        'category' => $request->category,
+        'default_value' => $request->default_value,
+        'min_value' => $request->min_value,
+        'max_value' => $request->max_value
+      ]);
+
+      return response()->json($goalType);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Update goal type error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to update goal type'], 500);
+    }
+  }
+
+  /**
+   * Delete a goal type
+   */
+  public function deleteGoalType(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      $goalType = GoalType::findOrFail($id);
+
+      // Check if there are user goals using this type
+      $userGoalsCount = UserGoal::where('goal_type_id', $id)->count();
+
+      if ($userGoalsCount > 0) {
+        // Instead of deleting, deactivate the goal type
+        $goalType->update(['is_active' => false]);
+        return response()->json([
+          'message' => 'Goal type deactivated (cannot delete while in use)',
+          'deactivated' => true
+        ]);
+      }
+
+      $goalType->delete();
+      return response()->json(['message' => 'Goal type deleted successfully']);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Delete goal type error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to delete goal type'], 500);
+    }
+  }
+
+  /**
+   * Get all user goals with relationships
+   */
+  public function getUserGoals(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      $userGoals = UserGoal::with(['user:id,name,email,user_type', 'goalType'])
+        ->whereNotNull('goal_type_id')
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+      return response()->json($userGoals);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Get user goals error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to fetch user goals'], 500);
+    }
+  }
+
+  /**
+   * Create a user goal
+   */
+  public function createUserGoal(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $request->validate([
+      'user_id' => 'required|exists:users,id',
+      'goal_type_id' => 'required|exists:goal_types,id',
+      'target_value' => 'required|integer|min:1'
+    ]);
+
+    try {
+      // Check if user already has this goal type
+      $existingGoal = UserGoal::where('user_id', $request->user_id)
+        ->where('goal_type_id', $request->goal_type_id)
+        ->first();
+
+      if ($existingGoal) {
+        return response()->json(['error' => 'User already has this goal type'], 422);
+      }
+
+      $userGoal = UserGoal::create([
+        'user_id' => $request->user_id,
+        'goal_type_id' => $request->goal_type_id,
+        'target_value' => $request->target_value,
+        'current_value' => 0,
+        'is_active' => true
+      ]);
+
+      // Load relationships for response
+      $userGoal->load(['user:id,name,email,user_type', 'goalType']);
+
+      return response()->json($userGoal, 201);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Create user goal error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to create user goal'], 500);
+    }
+  }
+
+  /**
+   * Update a user goal
+   */
+  public function updateUserGoal(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $request->validate([
+      'target_value' => 'required|integer|min:1'
+    ]);
+
+    try {
+      $userGoal = UserGoal::findOrFail($id);
+
+      $userGoal->update([
+        'target_value' => $request->target_value
+      ]);
+
+      $userGoal->load(['user:id,name,email,user_type', 'goalType']);
+      return response()->json($userGoal);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Update user goal error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to update user goal'], 500);
+    }
+  }
+
+  /**
+   * Delete a user goal
+   */
+  public function deleteUserGoal(Request $request, $id)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      $userGoal = UserGoal::findOrFail($id);
+      $userGoal->delete();
+
+      return response()->json(['message' => 'User goal deleted successfully']);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Delete user goal error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to delete user goal'], 500);
     }
   }
 }
