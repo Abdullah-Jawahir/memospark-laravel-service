@@ -24,6 +24,7 @@ class User extends Authenticatable
         'user_type',
         'points',
         'supabase_user_id',
+        'email_verified_at',
     ];
 
     protected $attributes = [
@@ -76,10 +77,5 @@ class User extends Authenticatable
     public function studyMaterials()
     {
         return $this->hasManyThrough(StudyMaterial::class, Deck::class);
-    }
-
-    public function searchFlashcardDifficultCards()
-    {
-        return $this->hasMany(SearchFlashcardDifficultCard::class);
     }
 }
