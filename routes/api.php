@@ -192,7 +192,19 @@ Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(funct
   // Goal Settings endpoints
   Route::get('/goals/overview', [AdminController::class, 'goalsOverview']);
   Route::get('/goals/statistics', [AdminController::class, 'goalStatistics']);
-  Route::put('/goals/defaults', [AdminController::class, 'updateDefaultGoals']);
+  Route::post('/goals/defaults', [AdminController::class, 'updateDefaultGoals']);
+
+  // Goal Types Management
+  Route::get('/goal-types', [AdminController::class, 'getGoalTypes']);
+  Route::post('/goal-types', [AdminController::class, 'createGoalType']);
+  Route::put('/goal-types/{id}', [AdminController::class, 'updateGoalType']);
+  Route::delete('/goal-types/{id}', [AdminController::class, 'deleteGoalType']);
+
+  // User Goals Management
+  Route::get('/user-goals', [AdminController::class, 'getUserGoals']);
+  Route::post('/user-goals', [AdminController::class, 'createUserGoal']);
+  Route::put('/user-goals/{id}', [AdminController::class, 'updateUserGoal']);
+  Route::delete('/user-goals/{id}', [AdminController::class, 'deleteUserGoal']);
 
   // Admin profile management
   Route::get('/profile', [AdminController::class, 'getProfile']);
