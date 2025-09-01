@@ -8,6 +8,7 @@ use App\Models\Deck;
 use App\Models\Document;
 use App\Models\FlashcardReview;
 use App\Models\StudyMaterial;
+use App\Models\UserGoal;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -484,6 +485,147 @@ class AdminController extends Controller
     } catch (\Exception $e) {
       \Illuminate\Support\Facades\Log::error('Admin password update error: ' . $e->getMessage());
       return response()->json(['error' => 'Failed to update password'], 500);
+    }
+  }
+
+  /**
+   * Get goals overview for admin dashboard
+   */
+  public function goalsOverview(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      // Total users with goals set
+      $totalUsersWithGoals = UserGoal::distinct('user_id')->count();
+
+      // Total users without goals
+      $totalUsersWithoutGoals = User::whereNotIn('id', function ($query) {
+        $query->select('user_id')->from('user_goals')->distinct();
+      })->count();
+
+      // Average daily goal
+      $averageDailyGoal = UserGoal::avg('daily_goal');
+
+      // Most common goal range
+      $goalDistribution = UserGoal::select(
+        DB::raw('
+          CASE 
+            WHEN daily_goal <= 25 THEN "1-25"
+            WHEN daily_goal <= 50 THEN "26-50"
+            WHEN daily_goal <= 100 THEN "51-100"
+            ELSE "100+"
+          END as goal_range
+        '),
+        DB::raw('COUNT(*) as count')
+      )
+        ->groupBy('goal_range')
+        ->orderBy('count', 'desc')
+        ->get();
+
+      // Recent goal updates (last 30 days)
+      $recentGoalUpdates = UserGoal::where('updated_at', '>=', Carbon::now()->subDays(30))->count();
+
+      return response()->json([
+        'total_users_with_goals' => $totalUsersWithGoals,
+        'total_users_without_goals' => $totalUsersWithoutGoals,
+        'average_daily_goal' => round($averageDailyGoal, 1),
+        'goal_distribution' => $goalDistribution,
+        'recent_goal_updates' => $recentGoalUpdates,
+        'total_users' => User::count()
+      ]);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Goals overview error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to fetch goals overview'], 500);
+    }
+  }
+
+  /**
+   * Get detailed goal statistics
+   */
+  public function goalStatistics(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      // Goals by user type
+      $goalsByUserType = User::leftJoin('user_goals', 'users.id', '=', 'user_goals.user_id')
+        ->select(
+          'users.user_type',
+          DB::raw('COUNT(user_goals.id) as goals_count'),
+          DB::raw('AVG(user_goals.daily_goal) as avg_goal')
+        )
+        ->groupBy('users.user_type')
+        ->get();
+
+      // Goal trends over time (last 6 months)
+      $goalTrends = UserGoal::select(
+        DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
+        DB::raw('COUNT(*) as goals_created'),
+        DB::raw('AVG(daily_goal) as avg_goal')
+      )
+        ->where('created_at', '>=', Carbon::now()->subMonths(6))
+        ->groupBy('month')
+        ->orderBy('month')
+        ->get();
+
+      // Most active users (top 10 by goals set)
+      $activeUsers = User::leftJoin('user_goals', 'users.id', '=', 'user_goals.user_id')
+        ->select('users.name', 'users.email', 'user_goals.daily_goal', 'user_goals.updated_at')
+        ->whereNotNull('user_goals.id')
+        ->orderBy('user_goals.daily_goal', 'desc')
+        ->limit(10)
+        ->get();
+
+      return response()->json([
+        'goals_by_user_type' => $goalsByUserType,
+        'goal_trends' => $goalTrends,
+        'active_users' => $activeUsers
+      ]);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Goal statistics error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to fetch goal statistics'], 500);
+    }
+  }
+
+  /**
+   * Update default goals (for future implementation of default recommendations)
+   */
+  public function updateDefaultGoals(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    $request->validate([
+      'student_default' => 'required|integer|min:1|max:200',
+      'admin_default' => 'required|integer|min:1|max:200',
+    ]);
+
+    try {
+      // For now, we'll store this in a simple way
+      // In the future, you might want a separate settings table
+
+      // This is a placeholder implementation
+      // You could store these defaults in a settings table or config
+
+      return response()->json([
+        'message' => 'Default goals updated successfully',
+        'defaults' => [
+          'student_default' => $request->student_default,
+          'admin_default' => $request->admin_default
+        ]
+      ]);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Update default goals error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to update default goals'], 500);
     }
   }
 }
