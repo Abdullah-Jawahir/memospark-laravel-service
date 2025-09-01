@@ -113,13 +113,7 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('search-flashcards/study/session/{sessionId}', [SearchFlashcardsController::class, 'getStudySessionDetails']);
   Route::get('search-flashcards/study/stats', [SearchFlashcardsController::class, 'getStudyStats']);
 
-  // Search Flashcards Difficult Cards endpoints (legacy)
-  Route::post('search-flashcards/difficult/mark', [SearchFlashcardsController::class, 'markAsDifficult']);
-  Route::post('search-flashcards/difficult/reviewed', [SearchFlashcardsController::class, 'markAsReviewed']);
-  Route::post('search-flashcards/difficult/re-rated', [SearchFlashcardsController::class, 'markAsReRated']);
-  Route::get('search-flashcards/difficult/count', [SearchFlashcardsController::class, 'getDifficultCardsCount']);
-
-  // Search Flashcards Review System (new - similar to regular flashcard reviews)
+  // Search Flashcards Review System
   Route::post('search-flashcards/record-review', [SearchFlashcardsController::class, 'recordReview']);
   Route::get('search-flashcards/difficult/count-from-reviews', [SearchFlashcardsController::class, 'getDifficultCardsCountFromReviews']);
 });
