@@ -367,7 +367,7 @@ class AdminController extends Controller
   }
 
   /**
-   * Deactivate user (we'll add an is_active field)
+   * Deactivate user (using email_verified_at null to mark deactivated)
    */
   public function deactivateUser(Request $request, $id)
   {
@@ -381,8 +381,10 @@ class AdminController extends Controller
       return response()->json(['error' => 'User not found'], 404);
     }
 
-    // For now, we'll mark them with negative points or add a deactivation timestamp
-    $user->update(['points' => -1]); // Temporary way to mark as deactivated
+    // Mark user as deactivated by setting email_verified_at to null
+    $user->update([
+      'email_verified_at' => null
+    ]);
 
     return response()->json([
       'message' => 'User deactivated successfully',
@@ -405,10 +407,10 @@ class AdminController extends Controller
       return response()->json(['error' => 'User not found'], 404);
     }
 
-    // Restore user (set points to 0 if they were -1)
-    if ($user->points === -1) {
-      $user->update(['points' => 0]);
-    }
+    // Restore user by setting email_verified_at to current timestamp
+    $user->update([
+      'email_verified_at' => now()
+    ]);
 
     return response()->json([
       'message' => 'User activated successfully',
