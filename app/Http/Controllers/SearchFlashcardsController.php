@@ -296,10 +296,9 @@ class SearchFlashcardsController extends Controller
       $searches = $query->orderBy('created_at', 'desc')
         ->paginate($perPage);
 
-      // Transform the data to include study statistics
+      // Transform the data to include study statistics (accessors are automatically computed)
       $searches->getCollection()->transform(function ($search) {
-        $search->study_stats = $search->study_stats;
-        $search->flashcards_count = $search->flashcards_count;
+        // study_stats and flashcards_count are accessors, automatically computed
         $search->has_been_studied = $search->hasBeenStudied();
         return $search;
       });
@@ -360,9 +359,7 @@ class SearchFlashcardsController extends Controller
         ], 404);
       }
 
-      // Add computed attributes
-      $search->study_stats = $search->study_stats;
-      $search->flashcards_count = $search->flashcards_count;
+      // Add computed attributes (accessors are automatically computed)
       $search->has_been_studied = $search->hasBeenStudied();
 
       return response()->json([
@@ -650,7 +647,7 @@ class SearchFlashcardsController extends Controller
       }
 
       // Find the local user by supabase_user_id
-      $localUser = \App\Models\User::where('supabase_user_id', $supabaseUserId)->first();
+      $localUser = User::where('supabase_user_id', $supabaseUserId)->first();
       if (!$localUser) {
         return response()->json([
           'success' => false,
@@ -678,7 +675,7 @@ class SearchFlashcardsController extends Controller
       }
 
       // Verify the flashcard belongs to the search in this study session
-      $flashcard = \App\Models\SearchFlashcardResult::where('id', $flashcardId)
+      $flashcard = SearchFlashcardResult::where('id', $flashcardId)
         ->where('search_id', $studySession->search_id)
         ->first();
 
@@ -900,62 +897,64 @@ class SearchFlashcardsController extends Controller
       }
 
       $days = $request->input('days', 30);
+      $periodStart = now()->subDays($days);
 
-      // Get total study sessions
-      $totalSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)->count();
-      $completedSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
-        ->whereNotNull('completed_at')
+      // Get total unique sessions (using SearchFlashcardReview for consistency)
+      $totalSessions = SearchFlashcardReview::where('user_id', $supabaseUserId)
+        ->distinct('session_id')
+        ->count('session_id');
+
+      $recentSessions = SearchFlashcardReview::where('user_id', $supabaseUserId)
+        ->where('reviewed_at', '>=', $periodStart)
+        ->distinct('session_id')
+        ->count('session_id');
+
+      // Get total flashcards studied (reviews count)
+      $totalFlashcardsStudied = SearchFlashcardReview::where('user_id', $supabaseUserId)->count();
+
+      // Get accuracy statistics from reviews
+      $correctReviews = SearchFlashcardReview::where('user_id', $supabaseUserId)
+        ->whereIn('rating', ['easy', 'good'])
         ->count();
+      $totalReviews = SearchFlashcardReview::where('user_id', $supabaseUserId)->count();
 
-      // Get recent study sessions
-      $recentSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
-        ->where('created_at', '>=', now()->subDays($days))
-        ->count();
-
-      // Get total flashcards studied
-      $totalFlashcardsStudied = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
-        ->sum('studied_flashcards');
-
-      // Get accuracy statistics
-      $totalCorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
-        ->sum('correct_answers');
-      $totalIncorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
-        ->sum('incorrect_answers');
-
-      $overallAccuracy = ($totalCorrect + $totalIncorrect) > 0
-        ? round(($totalCorrect / ($totalCorrect + $totalIncorrect)) * 100, 2)
+      $overallAccuracy = $totalReviews > 0
+        ? round(($correctReviews / $totalReviews) * 100, 2)
         : 0;
 
-      // Get most studied topics
-      $popularTopics = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
+      // Get most studied topics from reviews
+      $popularTopics = SearchFlashcardReview::where('user_id', $supabaseUserId)
         ->with('search')
         ->get()
         ->groupBy('search.topic')
-        ->map(function ($sessions, $topic) {
+        ->map(function ($reviewsForTopic, $topic) {
+          $correctCount = $reviewsForTopic->whereIn('rating', ['easy', 'good'])->count();
+          $totalCount = $reviewsForTopic->count();
+
           return [
             'topic' => $topic,
-            'sessions_count' => $sessions->count(),
-            'total_flashcards' => $sessions->sum('studied_flashcards'),
-            'average_accuracy' => $sessions->avg('accuracy_percentage')
+            'sessions_count' => $reviewsForTopic->pluck('session_id')->unique()->count(),
+            'total_flashcards' => $totalCount,
+            'average_accuracy' => $totalCount > 0 ? round(($correctCount / $totalCount) * 100, 2) : 0
           ];
         })
         ->sortByDesc('sessions_count')
         ->take(5)
         ->values();
 
-      // Get study time statistics
-      $totalStudyTime = \App\Models\SearchFlashcardStudyRecord::whereHas('studySession', function ($query) use ($supabaseUserId) {
-        $query->where('user_id', $supabaseUserId);
-      })->sum('time_spent');
+      // Get study time statistics (using SearchFlashcardReview for consistency with dashboard)
+      $totalStudyTime = SearchFlashcardReview::where('user_id', $supabaseUserId)
+        ->where('reviewed_at', '>=', now()->subDays($days))
+        ->sum('study_time');
 
       $stats = [
         'total_sessions' => $totalSessions,
-        'completed_sessions' => $completedSessions,
+        'completed_sessions' => $totalSessions, // All sessions are considered completed since they have reviews
         'recent_sessions' => $recentSessions,
         'total_flashcards_studied' => $totalFlashcardsStudied,
         'overall_accuracy' => $overallAccuracy,
-        'total_correct_answers' => $totalCorrect,
-        'total_incorrect_answers' => $totalIncorrect,
+        'total_correct_answers' => $correctReviews,
+        'total_incorrect_answers' => $totalReviews - $correctReviews,
         'total_study_time_seconds' => $totalStudyTime,
         'total_study_time_formatted' => gmdate('H:i:s', $totalStudyTime),
         'popular_topics' => $popularTopics,
