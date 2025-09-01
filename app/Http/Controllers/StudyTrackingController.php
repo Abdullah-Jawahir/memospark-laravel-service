@@ -52,7 +52,7 @@ class StudyTrackingController extends Controller
     $currentSessionId = $request->session_id;
 
     // Verify the study material belongs to a document owned by this user (by id or email)
-    $studyMaterial = StudyMaterial::with(['document.deck'])->find($request->study_material_id);
+    $studyMaterial = StudyMaterial::with(['document.deck.user'])->find($request->study_material_id);
 
     Log::info($studyMaterial ? $studyMaterial->toArray() : null);
 
@@ -68,11 +68,9 @@ class StudyTrackingController extends Controller
       }
 
       // Fallback: if deck->user relation is available, also validate via local user/email mapping
-      if (!$ownedByUser && $studyMaterial->document->deck && method_exists($studyMaterial->document->deck, 'getRelation')) {
-        $deckUser = $studyMaterial->document->deck->getRelation('user') ?? null;
-        if ($deckUser) {
-          $ownedByUser = ($deckUser->id === $userId) || (isset($supabaseUser['email']) && $deckUser->email === $supabaseUser['email']);
-        }
+      if (!$ownedByUser && $studyMaterial->document->deck && $studyMaterial->document->deck->user) {
+        $deckUser = $studyMaterial->document->deck->user;
+        $ownedByUser = ($deckUser->id === $userId) || (isset($supabaseUser['email']) && $deckUser->email === $supabaseUser['email']);
       }
     }
     if (!$studyMaterial || !$ownedByUser) {
