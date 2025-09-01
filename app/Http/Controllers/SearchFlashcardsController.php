@@ -6,6 +6,8 @@ use App\Jobs\GenerateSearchFlashcards;
 use App\Services\FastApiService;
 use App\Models\SearchFlashcardSearch;
 use App\Models\SearchFlashcardResult;
+use App\Models\SearchFlashcardReview;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -212,9 +214,9 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -234,7 +236,7 @@ class SearchFlashcardsController extends Controller
         'message' => 'User jobs retrieval',
         'data' => [
           'note' => 'Job tracking is currently limited. Use the job_id from the generation response to check status.',
-          'user_id' => $userId
+          'user_id' => $supabaseUserId
         ]
       ]);
     } catch (\Exception $e) {
@@ -261,9 +263,9 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -274,7 +276,7 @@ class SearchFlashcardsController extends Controller
       $status = $request->input('status'); // Optional filter by status
       $topic = $request->input('topic'); // Optional filter by topic
 
-      $query = SearchFlashcardSearch::forUser($userId)
+      $query = SearchFlashcardSearch::forUser($supabaseUserId)
         ->with(['flashcards' => function ($query) {
           $query->select('id', 'search_id', 'question', 'answer', 'type', 'difficulty', 'order_index');
         }])
@@ -332,16 +334,16 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
         ], 401);
       }
 
-      $search = SearchFlashcardSearch::forUser($userId)
+      $search = SearchFlashcardSearch::forUser($supabaseUserId)
         ->with(['flashcards' => function ($query) {
           $query->orderBy('order_index');
         }])
@@ -393,9 +395,9 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -405,7 +407,7 @@ class SearchFlashcardsController extends Controller
       $limit = $request->input('limit', 5);
       $days = $request->input('days', 30);
 
-      $recentSearches = SearchFlashcardSearch::forUser($userId)
+      $recentSearches = SearchFlashcardSearch::forUser($supabaseUserId)
         ->recent($days)
         ->completed()
         ->with(['flashcards' => function ($query) {
@@ -457,9 +459,9 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -469,22 +471,22 @@ class SearchFlashcardsController extends Controller
       $days = $request->input('days', 30);
 
       // Get total searches
-      $totalSearches = SearchFlashcardSearch::forUser($userId)->count();
-      $completedSearches = SearchFlashcardSearch::forUser($userId)->completed()->count();
-      $failedSearches = SearchFlashcardSearch::forUser($userId)->failed()->count();
+      $totalSearches = SearchFlashcardSearch::forUser($supabaseUserId)->count();
+      $completedSearches = SearchFlashcardSearch::forUser($supabaseUserId)->completed()->count();
+      $failedSearches = SearchFlashcardSearch::forUser($supabaseUserId)->failed()->count();
 
       // Get recent searches count
-      $recentSearches = SearchFlashcardSearch::forUser($userId)->recent($days)->count();
+      $recentSearches = SearchFlashcardSearch::forUser($supabaseUserId)->recent($days)->count();
 
       // Get total flashcards generated
-      $totalFlashcards = SearchFlashcardSearch::forUser($userId)
+      $totalFlashcards = SearchFlashcardSearch::forUser($supabaseUserId)
         ->completed()
         ->withCount('flashcards')
         ->get()
         ->sum('flashcards_count');
 
       // Get most popular topics
-      $popularTopics = SearchFlashcardSearch::forUser($userId)
+      $popularTopics = SearchFlashcardSearch::forUser($supabaseUserId)
         ->completed()
         ->selectRaw('topic, COUNT(*) as count')
         ->groupBy('topic')
@@ -493,7 +495,7 @@ class SearchFlashcardsController extends Controller
         ->get();
 
       // Get difficulty distribution
-      $difficultyDistribution = SearchFlashcardSearch::forUser($userId)
+      $difficultyDistribution = SearchFlashcardSearch::forUser($supabaseUserId)
         ->completed()
         ->selectRaw('difficulty, COUNT(*) as count')
         ->groupBy('difficulty')
@@ -554,9 +556,9 @@ class SearchFlashcardsController extends Controller
       }
 
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -567,7 +569,7 @@ class SearchFlashcardsController extends Controller
       $totalFlashcards = $request->input('total_flashcards');
 
       // Verify the search belongs to this user
-      $search = SearchFlashcardSearch::forUser($userId)->find($searchId);
+      $search = SearchFlashcardSearch::forUser($supabaseUserId)->find($searchId);
       if (!$search) {
         return response()->json([
           'success' => false,
@@ -578,7 +580,7 @@ class SearchFlashcardsController extends Controller
       // Create study session
       $studySession = \App\Models\SearchFlashcardStudySession::create([
         'search_id' => $searchId,
-        'user_id' => $userId,
+        'user_id' => $supabaseUserId, // Use supabase_user_id for study sessions
         'started_at' => now(),
         'total_flashcards' => $totalFlashcards,
         'studied_flashcards' => 0,
@@ -638,15 +640,25 @@ class SearchFlashcardsController extends Controller
       }
 
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
         ], 401);
       }
 
+      // Find the local user by supabase_user_id
+      $localUser = \App\Models\User::where('supabase_user_id', $supabaseUserId)->first();
+      if (!$localUser) {
+        return response()->json([
+          'success' => false,
+          'message' => 'User not found'
+        ], 404);
+      }
+
+      $userId = $localUser->id; // Use the numeric ID for database operations
       $studySessionId = $request->input('study_session_id');
       $flashcardId = $request->input('flashcard_id');
       $result = $request->input('result');
@@ -655,7 +667,7 @@ class SearchFlashcardsController extends Controller
 
       // Verify the study session belongs to this user
       $studySession = \App\Models\SearchFlashcardStudySession::where('id', $studySessionId)
-        ->where('user_id', $userId)
+        ->where('user_id', $supabaseUserId) // Study session uses supabase_user_id
         ->first();
 
       if (!$studySession) {
@@ -757,9 +769,9 @@ class SearchFlashcardsController extends Controller
       }
 
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -770,7 +782,7 @@ class SearchFlashcardsController extends Controller
 
       // Verify the study session belongs to this user
       $studySession = \App\Models\SearchFlashcardStudySession::where('id', $studySessionId)
-        ->where('user_id', $userId)
+        ->where('user_id', $supabaseUserId) // Study session uses supabase_user_id
         ->first();
 
       if (!$studySession) {
@@ -827,9 +839,9 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -837,7 +849,7 @@ class SearchFlashcardsController extends Controller
       }
 
       $studySession = \App\Models\SearchFlashcardStudySession::where('id', $sessionId)
-        ->where('user_id', $userId)
+        ->where('user_id', $supabaseUserId) // Study session uses supabase_user_id
         ->with(['search', 'studyRecords.flashcard'])
         ->first();
 
@@ -878,9 +890,9 @@ class SearchFlashcardsController extends Controller
   {
     try {
       $supabaseUser = $request->get('supabase_user');
-      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      if (!$userId) {
+      if (!$supabaseUserId) {
         return response()->json([
           'success' => false,
           'message' => 'Authentication required'
@@ -890,24 +902,24 @@ class SearchFlashcardsController extends Controller
       $days = $request->input('days', 30);
 
       // Get total study sessions
-      $totalSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)->count();
-      $completedSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+      $totalSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)->count();
+      $completedSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
         ->whereNotNull('completed_at')
         ->count();
 
       // Get recent study sessions
-      $recentSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+      $recentSessions = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
         ->where('created_at', '>=', now()->subDays($days))
         ->count();
 
       // Get total flashcards studied
-      $totalFlashcardsStudied = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+      $totalFlashcardsStudied = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
         ->sum('studied_flashcards');
 
       // Get accuracy statistics
-      $totalCorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+      $totalCorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
         ->sum('correct_answers');
-      $totalIncorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+      $totalIncorrect = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
         ->sum('incorrect_answers');
 
       $overallAccuracy = ($totalCorrect + $totalIncorrect) > 0
@@ -915,7 +927,7 @@ class SearchFlashcardsController extends Controller
         : 0;
 
       // Get most studied topics
-      $popularTopics = \App\Models\SearchFlashcardStudySession::where('user_id', $userId)
+      $popularTopics = \App\Models\SearchFlashcardStudySession::where('user_id', $supabaseUserId)
         ->with('search')
         ->get()
         ->groupBy('search.topic')
@@ -932,8 +944,8 @@ class SearchFlashcardsController extends Controller
         ->values();
 
       // Get study time statistics
-      $totalStudyTime = \App\Models\SearchFlashcardStudyRecord::whereHas('studySession', function ($query) use ($userId) {
-        $query->where('user_id', $userId);
+      $totalStudyTime = \App\Models\SearchFlashcardStudyRecord::whereHas('studySession', function ($query) use ($supabaseUserId) {
+        $query->where('user_id', $supabaseUserId);
       })->sum('time_spent');
 
       $stats = [
@@ -964,6 +976,580 @@ class SearchFlashcardsController extends Controller
       return response()->json([
         'success' => false,
         'message' => 'Failed to retrieve study statistics',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Mark a search flashcard as difficult
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function markAsDifficult(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'search_id' => 'required|integer|exists:search_flashcard_searches,id',
+        'flashcard_id' => 'required|integer|exists:search_flashcard_results,id',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$supabaseUserId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      // Find the local user by supabase_user_id
+      $localUser = \App\Models\User::where('supabase_user_id', $supabaseUserId)->first();
+      if (!$localUser) {
+        return response()->json([
+          'success' => false,
+          'message' => 'User not found'
+        ], 404);
+      }
+
+      $userId = $localUser->id; // Use the numeric ID for database operations
+      $searchId = $request->input('search_id');
+      $flashcardId = $request->input('flashcard_id');
+
+      // Verify the search belongs to this user
+      $search = \App\Models\SearchFlashcardSearch::where('id', $searchId)
+        ->where('user_id', $supabaseUserId) // Search uses supabase_user_id
+        ->first();
+
+      if (!$search) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Search not found or access denied'
+        ], 404);
+      }
+
+      // Verify the flashcard belongs to the search
+      $flashcard = \App\Models\SearchFlashcardResult::where('id', $flashcardId)
+        ->where('search_id', $searchId)
+        ->first();
+
+      if (!$flashcard) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Flashcard not found or access denied'
+        ], 404);
+      }
+
+      // Check if already marked as difficult
+      $existingDifficultCard = \App\Models\SearchFlashcardDifficultCard::where('user_id', $userId)
+        ->where('search_id', $searchId)
+        ->where('flashcard_id', $flashcardId)
+        ->first();
+
+      if ($existingDifficultCard) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Flashcard is already marked as difficult'
+        ], 400);
+      }
+
+      // Mark as difficult
+      $difficultCard = \App\Models\SearchFlashcardDifficultCard::create([
+        'user_id' => $userId,
+        'search_id' => $searchId,
+        'flashcard_id' => $flashcardId,
+        'status' => 'marked_difficult',
+        'marked_at' => now()
+      ]);
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Flashcard marked as difficult successfully',
+        'data' => [
+          'difficult_card_id' => $difficultCard->id,
+          'status' => $difficultCard->status,
+          'marked_at' => $difficultCard->marked_at
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in markAsDifficult controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to mark flashcard as difficult',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Mark a difficult flashcard as reviewed
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function markAsReviewed(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'search_id' => 'required|integer|exists:search_flashcard_searches,id',
+        'flashcard_id' => 'required|integer|exists:search_flashcard_results,id',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$supabaseUserId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      // Find the local user by supabase_user_id
+      $localUser = \App\Models\User::where('supabase_user_id', $supabaseUserId)->first();
+      if (!$localUser) {
+        return response()->json([
+          'success' => false,
+          'message' => 'User not found'
+        ], 404);
+      }
+
+      $userId = $localUser->id; // Use the numeric ID for database operations
+      $searchId = $request->input('search_id');
+      $flashcardId = $request->input('flashcard_id');
+
+      // Find the difficult card
+      $difficultCard = \App\Models\SearchFlashcardDifficultCard::where('user_id', $userId)
+        ->where('search_id', $searchId)
+        ->where('flashcard_id', $flashcardId)
+        ->where('status', 'marked_difficult')
+        ->first();
+
+      if (!$difficultCard) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Difficult card not found or already reviewed'
+        ], 404);
+      }
+
+      // Mark as reviewed
+      $difficultCard->markAsReviewed();
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Flashcard marked as reviewed successfully',
+        'data' => [
+          'difficult_card_id' => $difficultCard->id,
+          'status' => $difficultCard->status,
+          'reviewed_at' => $difficultCard->reviewed_at
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in markAsReviewed controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to mark flashcard as reviewed',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Mark a difficult flashcard as re-rated and update final rating
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function markAsReRated(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'search_id' => 'required|integer|exists:search_flashcard_searches,id',
+        'flashcard_id' => 'required|integer|exists:search_flashcard_results,id',
+        'final_rating' => 'required|in:again,hard,good,easy',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$supabaseUserId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      // Find the local user by supabase_user_id
+      $localUser = \App\Models\User::where('supabase_user_id', $supabaseUserId)->first();
+      if (!$localUser) {
+        return response()->json([
+          'success' => false,
+          'message' => 'User not found'
+        ], 404);
+      }
+
+      $userId = $localUser->id; // Use the numeric ID for database operations
+      $searchId = $request->input('search_id');
+      $flashcardId = $request->input('flashcard_id');
+      $finalRating = $request->input('final_rating');
+
+      // Find the difficult card
+      $difficultCard = \App\Models\SearchFlashcardDifficultCard::where('user_id', $userId)
+        ->where('search_id', $searchId)
+        ->where('flashcard_id', $flashcardId)
+        ->whereIn('status', ['marked_difficult', 'reviewed'])
+        ->first();
+
+      if (!$difficultCard) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Difficult card not found or already re-rated'
+        ], 404);
+      }
+
+      // Mark as re-rated with final rating
+      $difficultCard->markAsReRated($finalRating);
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Flashcard marked as re-rated successfully',
+        'data' => [
+          'difficult_card_id' => $difficultCard->id,
+          'status' => $difficultCard->status,
+          'final_rating' => $difficultCard->final_rating,
+          're_rated_at' => $difficultCard->re_rated_at
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in markAsReRated controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to mark flashcard as re-rated',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Get difficult cards count for a user
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function getDifficultCardsCount(Request $request): JsonResponse
+  {
+    try {
+      $supabaseUser = $request->get('supabase_user');
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$supabaseUserId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      // Find the local user by supabase_user_id
+      $localUser = \App\Models\User::where('supabase_user_id', $supabaseUserId)->first();
+      if (!$localUser) {
+        return response()->json([
+          'success' => false,
+          'message' => 'User not found'
+        ], 404);
+      }
+
+      $userId = $localUser->id; // Use the numeric ID for database operations
+      $searchId = $request->input('search_id');
+
+      // Get count of currently difficult cards
+      $difficultCount = \App\Models\SearchFlashcardDifficultCard::where('user_id', $userId)
+        ->where('status', 'marked_difficult')
+        ->when($searchId, function ($query) use ($searchId) {
+          return $query->where('search_id', $searchId);
+        })
+        ->count();
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Difficult cards count retrieved successfully',
+        'data' => [
+          'difficult_cards_count' => $difficultCount
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in getDifficultCardsCount controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to retrieve difficult cards count',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Record a search flashcard review with rating (similar to StudyTrackingController::recordReview)
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function recordReview(Request $request): JsonResponse
+  {
+    try {
+      $validator = Validator::make($request->all(), [
+        'search_id' => 'required|integer|exists:search_flashcard_searches,id',
+        'flashcard_id' => 'required|integer|exists:search_flashcard_results,id',
+        'rating' => 'required|in:again,hard,good,easy',
+        'study_time' => 'required|integer|min:0',
+        'session_id' => 'nullable|string',
+      ]);
+
+      if ($validator->fails()) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Validation failed',
+          'errors' => $validator->errors()
+        ], 422);
+      }
+
+      $supabaseUser = $request->get('supabase_user');
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$supabaseUserId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $searchId = $request->input('search_id');
+      $flashcardId = $request->input('flashcard_id');
+      $rating = $request->input('rating');
+      $studyTime = $request->input('study_time');
+      $sessionId = $request->input('session_id');
+
+      // Verify the search belongs to this user
+      $search = SearchFlashcardSearch::where('id', $searchId)
+        ->where('user_id', $supabaseUserId)
+        ->first();
+
+      if (!$search) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Search not found or access denied'
+        ], 404);
+      }
+
+      // Verify the flashcard belongs to the search
+      $flashcard = SearchFlashcardResult::where('id', $flashcardId)
+        ->where('search_id', $searchId)
+        ->first();
+
+      if (!$flashcard) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Flashcard not found or access denied'
+        ], 404);
+      }
+
+      // Check if this card was previously rated as "hard" in the same session
+      $previousRating = null;
+      $ratingChanged = false;
+
+      if ($sessionId) {
+        $previousReview = SearchFlashcardReview::where('user_id', $supabaseUserId)
+          ->where('search_id', $searchId)
+          ->where('flashcard_id', $flashcardId)
+          ->where('session_id', $sessionId)
+          ->orderByDesc('reviewed_at')
+          ->first();
+
+        if ($previousReview) {
+          $previousRating = $previousReview->rating;
+          // Check if the rating changed from "hard" to "good" or "easy"
+          if ($previousRating === 'hard' && ($rating === 'good' || $rating === 'easy')) {
+            $ratingChanged = true;
+          }
+        }
+      }
+
+      // Create a new review per attempt
+      $review = SearchFlashcardReview::create([
+        'user_id' => $supabaseUserId,
+        'search_id' => $searchId,
+        'flashcard_id' => $flashcardId,
+        'rating' => $rating,
+        'study_time' => $studyTime,
+        'reviewed_at' => now(),
+        'session_id' => $sessionId,
+      ]);
+
+      // Calculate session statistics (similar to StudyTrackingController)
+      $sessionStats = null;
+      if ($sessionId) {
+        // Get counts for this session based on latest ratings
+        $sessionStats = [
+          'total' => SearchFlashcardReview::where('user_id', $supabaseUserId)
+            ->where('search_id', $searchId)
+            ->where('session_id', $sessionId)
+            ->distinct('flashcard_id')
+            ->count(),
+          'hard_count' => SearchFlashcardReview::where('user_id', $supabaseUserId)
+            ->where('search_id', $searchId)
+            ->where('session_id', $sessionId)
+            ->where('rating', 'hard')
+            ->whereRaw('id IN (
+              SELECT MAX(id) FROM search_flashcard_reviews 
+              WHERE user_id = ? AND search_id = ? AND session_id = ?
+              GROUP BY flashcard_id
+            )', [$supabaseUserId, $searchId, $sessionId])
+            ->count(),
+          'good_or_easy_count' => SearchFlashcardReview::where('user_id', $supabaseUserId)
+            ->where('search_id', $searchId)
+            ->where('session_id', $sessionId)
+            ->whereIn('rating', ['good', 'easy'])
+            ->whereRaw('id IN (
+              SELECT MAX(id) FROM search_flashcard_reviews 
+              WHERE user_id = ? AND search_id = ? AND session_id = ?
+              GROUP BY flashcard_id
+            )', [$supabaseUserId, $searchId, $sessionId])
+            ->count(),
+          'rating_changed' => $ratingChanged,
+          'previous_rating' => $previousRating,
+        ];
+      }
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Review recorded successfully',
+        'data' => [
+          'review' => [
+            'id' => $review->id,
+            'rating' => $review->rating,
+            'study_time' => $review->study_time,
+            'reviewed_at' => $review->reviewed_at,
+          ],
+          'session_stats' => $sessionStats,
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in recordReview controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to record review',
+        'error' => $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Get difficult cards count based on latest reviews (replaces old getDifficultCardsCount)
+   *
+   * @param Request $request
+   * @return JsonResponse
+   */
+  public function getDifficultCardsCountFromReviews(Request $request): JsonResponse
+  {
+    try {
+      $supabaseUser = $request->get('supabase_user');
+      $supabaseUserId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
+      if (!$supabaseUserId) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Authentication required'
+        ], 401);
+      }
+
+      $searchId = $request->input('search_id');
+      $sessionId = $request->input('session_id');
+
+      // If session_id is provided, get difficult count for that session
+      if ($sessionId) {
+        $difficultCount = SearchFlashcardReview::where('user_id', $supabaseUserId)
+          ->where('search_id', $searchId)
+          ->where('session_id', $sessionId)
+          ->where('rating', 'hard')
+          ->whereRaw('id IN (
+            SELECT MAX(id) FROM search_flashcard_reviews 
+            WHERE user_id = ? AND search_id = ? AND session_id = ?
+            GROUP BY flashcard_id
+          )', [$supabaseUserId, $searchId, $sessionId])
+          ->count();
+      } else {
+        // Get overall difficult count (latest rating per card is 'hard')
+        $difficultCount = SearchFlashcardReview::where('user_id', $supabaseUserId)
+          ->where('search_id', $searchId)
+          ->where('rating', 'hard')
+          ->whereRaw('id IN (
+            SELECT MAX(id) FROM search_flashcard_reviews 
+            WHERE user_id = ? AND search_id = ?
+            GROUP BY flashcard_id
+          )', [$supabaseUserId, $searchId])
+          ->count();
+      }
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Difficult cards count retrieved successfully',
+        'data' => [
+          'difficult_cards_count' => $difficultCount
+        ]
+      ]);
+    } catch (\Exception $e) {
+      Log::channel('fastapi')->error('Error in getDifficultCardsCountFromReviews controller', [
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Failed to retrieve difficult cards count',
         'error' => $e->getMessage()
       ], 500);
     }
