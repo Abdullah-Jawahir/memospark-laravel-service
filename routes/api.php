@@ -189,6 +189,11 @@ Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(funct
   Route::get('/users', [AdminController::class, 'getUsers']);
   Route::get('/system-stats', [AdminController::class, 'systemStats']);
 
+  // Goal Settings endpoints
+  Route::get('/goals/overview', [AdminController::class, 'goalsOverview']);
+  Route::get('/goals/statistics', [AdminController::class, 'goalStatistics']);
+  Route::put('/goals/defaults', [AdminController::class, 'updateDefaultGoals']);
+
   // Admin profile management
   Route::get('/profile', [AdminController::class, 'getProfile']);
   Route::put('/profile', [AdminController::class, 'updateProfile']);
