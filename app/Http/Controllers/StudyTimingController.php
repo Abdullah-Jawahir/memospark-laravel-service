@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\StudyActivityTiming;
-use App\Models\StudySessionTiming;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -155,19 +154,9 @@ class StudyTimingController extends Controller
       $supabaseUser = $request->get('supabase_user');
       $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
 
-      $sessionTiming = StudySessionTiming::where('session_id', $sessionId)->first();
       $activities = StudyActivityTiming::where('session_id', $sessionId)
         ->orderBy('created_at')
         ->get();
-
-      if (!$sessionTiming) {
-        // Create a session timing record if it doesn't exist
-        $sessionTiming = StudySessionTiming::create([
-          'session_id' => $sessionId,
-          'user_id' => $userId,
-          'session_start' => now(),
-        ]);
-      }
 
       // Calculate totals from activities
       $flashcardTime = $activities->where('activity_type', 'flashcard')->sum('duration_seconds');
@@ -200,58 +189,6 @@ class StudyTimingController extends Controller
       return response()->json([
         'success' => false,
         'message' => 'Failed to get timing summary'
-      ], 500);
-    }
-  }
-
-  /**
-   * Update session timing totals
-   */
-  public function updateSessionTiming(Request $request)
-  {
-    try {
-      // Get authenticated user
-      $supabaseUser = $request->get('supabase_user');
-      if (!$supabaseUser || !isset($supabaseUser['id'])) {
-        return response()->json(['error' => 'Supabase user not found'], 401);
-      }
-      $userId = $supabaseUser['id'];
-
-      $validator = Validator::make($request->all(), [
-        'session_id' => 'required|string',
-        'total_study_time' => 'required|integer|min:0',
-        'flashcard_time' => 'required|integer|min:0',
-        'quiz_time' => 'required|integer|min:0',
-        'exercise_time' => 'required|integer|min:0',
-        'updated_at' => 'required|date',
-      ]);
-
-      if ($validator->fails()) {
-        return response()->json([
-          'success' => false,
-          'message' => 'Validation failed',
-          'errors' => $validator->errors()
-        ], 400);
-      }
-
-      StudySessionTiming::updateOrCreate(
-        ['session_id' => $request->session_id],
-        [
-          'user_id' => $userId,
-          'total_study_time' => $request->total_study_time,
-          'flashcard_time' => $request->flashcard_time,
-          'quiz_time' => $request->quiz_time,
-          'exercise_time' => $request->exercise_time,
-          'session_start' => $request->session_start ?? now(),
-        ]
-      );
-
-      return response()->json(['success' => true]);
-    } catch (\Exception $e) {
-      Log::error('Failed to update session timing: ' . $e->getMessage());
-      return response()->json([
-        'success' => false,
-        'message' => 'Failed to update session timing'
       ], 500);
     }
   }
