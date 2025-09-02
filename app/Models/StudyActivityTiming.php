@@ -24,9 +24,4 @@ class StudyActivityTiming extends Model
     'end_time' => 'datetime',
     'activity_details' => 'array',
   ];
-
-  public function sessionTiming()
-  {
-    return $this->belongsTo(StudySessionTiming::class, 'session_id', 'session_id');
-  }
 }
