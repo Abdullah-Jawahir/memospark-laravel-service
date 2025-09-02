@@ -442,13 +442,66 @@ class DashboardController extends Controller
             ];
         });
 
-        // Today's goal
-        $goal = UserGoal::where('user_id', $userId)->latest()->first();
-        $dailyGoal = $goal ? $goal->daily_goal : 50;
+        // Today's goal - use new goal system
+        // First check if user has a Daily Flashcards goal in the new system
+        $dailyFlashcardsGoal = \App\Models\UserGoal::where('user_id', $userId)
+            ->whereHas('goalType', function ($query) {
+                $query->where('name', 'Daily Flashcards');
+            })
+            ->where('is_active', true)
+            ->with('goalType')
+            ->first();
+
+        if ($dailyFlashcardsGoal) {
+            $dailyGoal = $dailyFlashcardsGoal->target_value;
+            $goalType = 'cards_studied';
+            $goalDescription = $dailyFlashcardsGoal->goalType->description;
+        } else {
+            // Fallback to default value from goal type
+            $defaultGoalType = \App\Models\GoalType::where('name', 'Daily Flashcards')->first();
+            $dailyGoal = $defaultGoalType ? $defaultGoalType->default_value : 50;
+            $goalType = 'cards_studied';
+            $goalDescription = 'Study cards daily';
+        }
+
         $remaining = max(0, $dailyGoal - $cardsStudiedToday);
         $progressPercentage = $dailyGoal > 0 ? round(($cardsStudiedToday / $dailyGoal) * 100) : 0;
-        $goalType = $goal ? $goal->goal_type : 'cards_studied';
-        $goalDescription = $goal ? $goal->description : 'Study cards daily';
+
+        // Get user's additional goals (new goal system)
+        $userGoals = \App\Models\UserGoal::where('user_id', $userId)
+            ->where('is_active', true)
+            ->with('goalType')
+            ->get()
+            ->map(function ($userGoal) use ($cardsStudiedToday) {
+                $current_value = $userGoal->current_value;
+
+                // For flashcard goals, use today's studied count
+                if (
+                    $userGoal->goalType && $userGoal->goalType->category === 'study' &&
+                    $userGoal->goalType->unit === 'cards'
+                ) {
+                    $current_value = $cardsStudiedToday;
+                }
+
+                $progress_percentage = $userGoal->target_value > 0 ?
+                    round(($current_value / $userGoal->target_value) * 100) : 0;
+
+                return [
+                    'id' => $userGoal->id,
+                    'goal_type' => [
+                        'id' => $userGoal->goalType->id,
+                        'name' => $userGoal->goalType->name,
+                        'description' => $userGoal->goalType->description,
+                        'unit' => $userGoal->goalType->unit,
+                        'category' => $userGoal->goalType->category,
+                    ],
+                    'target_value' => $userGoal->target_value,
+                    'current_value' => $current_value,
+                    'progress_percentage' => min(100, $progress_percentage),
+                    'is_completed' => $current_value >= $userGoal->target_value,
+                    'is_active' => $userGoal->is_active,
+                ];
+            });
 
         return response()->json([
             'user' => [
@@ -475,7 +528,8 @@ class DashboardController extends Controller
                 'goal_description' => $goalDescription,
                 'is_completed' => $cardsStudiedToday >= $dailyGoal,
                 'message' => $remaining > 0 ? "{$remaining} more cards to reach your daily goal!" : "Goal completed! Great job!"
-            ]
+            ],
+            'user_goals' => $userGoals
         ]);
     }
 
