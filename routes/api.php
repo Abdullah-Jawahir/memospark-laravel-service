@@ -94,6 +94,14 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('study/recent-activity', [StudyTrackingController::class, 'getRecentActivity']);
   Route::post('study/enrich-materials', [StudyTrackingController::class, 'enrichMaterials']);
 
+  // Student Goal Management endpoints
+  Route::get('student-goals/types', [App\Http\Controllers\StudentGoalController::class, 'getGoalTypes']);
+  Route::get('student-goals', [App\Http\Controllers\StudentGoalController::class, 'getUserGoals']);
+  Route::post('student-goals/set', [App\Http\Controllers\StudentGoalController::class, 'setGoal']);
+  Route::post('student-goals/custom', [App\Http\Controllers\StudentGoalController::class, 'createCustomGoalType']);
+  Route::put('student-goals/{goalId}/toggle', [App\Http\Controllers\StudentGoalController::class, 'toggleGoal']);
+  Route::delete('student-goals/{goalId}', [App\Http\Controllers\StudentGoalController::class, 'deleteGoal']);
+
   // Search Flashcards endpoints
   Route::post('search-flashcards/generate', [SearchFlashcardsController::class, 'generateFlashcards']);
   Route::get('search-flashcards/job/{jobId}/status', [SearchFlashcardsController::class, 'checkJobStatus']);
@@ -192,6 +200,7 @@ Route::middleware(['supabase.auth', 'admin.auth'])->prefix('admin')->group(funct
   // Goal Settings endpoints
   Route::get('/goals/overview', [AdminController::class, 'goalsOverview']);
   Route::get('/goals/statistics', [AdminController::class, 'goalStatistics']);
+  Route::get('/goals/defaults', [AdminController::class, 'getDefaultGoals']);
   Route::post('/goals/defaults', [AdminController::class, 'updateDefaultGoals']);
 
   // Goal Types Management
