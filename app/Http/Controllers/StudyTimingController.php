@@ -16,6 +16,13 @@ class StudyTimingController extends Controller
   public function startActivity(Request $request)
   {
     try {
+      // Get authenticated user
+      $supabaseUser = $request->get('supabase_user');
+      if (!$supabaseUser || !isset($supabaseUser['id'])) {
+        return response()->json(['error' => 'Supabase user not found'], 401);
+      }
+      $userId = $supabaseUser['id'];
+
       $validator = Validator::make($request->all(), [
         'session_id' => 'required|string',
         'activity_type' => 'required|in:flashcard,quiz,exercise',
@@ -33,6 +40,7 @@ class StudyTimingController extends Controller
 
       $timing = StudyActivityTiming::create([
         'session_id' => $request->session_id,
+        'user_id' => $userId,
         'activity_type' => $request->activity_type,
         'start_time' => $request->start_time,
         'duration_seconds' => 0, // Will be updated when ended
@@ -94,6 +102,13 @@ class StudyTimingController extends Controller
   public function recordActivity(Request $request)
   {
     try {
+      // Get authenticated user
+      $supabaseUser = $request->get('supabase_user');
+      if (!$supabaseUser || !isset($supabaseUser['id'])) {
+        return response()->json(['error' => 'Supabase user not found'], 401);
+      }
+      $userId = $supabaseUser['id'];
+
       $validator = Validator::make($request->all(), [
         'session_id' => 'required|string',
         'activity_type' => 'required|in:flashcard,quiz,exercise',
@@ -112,6 +127,7 @@ class StudyTimingController extends Controller
 
       StudyActivityTiming::create([
         'session_id' => $request->session_id,
+        'user_id' => $userId,
         'activity_type' => $request->activity_type,
         'start_time' => $request->recorded_at,
         'end_time' => $request->recorded_at,
@@ -132,9 +148,13 @@ class StudyTimingController extends Controller
   /**
    * Get study timing summary for a session
    */
-  public function getTimingSummary($sessionId)
+  public function getTimingSummary(Request $request, $sessionId)
   {
     try {
+      // Get authenticated user for consistency (optional for this method)
+      $supabaseUser = $request->get('supabase_user');
+      $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null;
+
       $sessionTiming = StudySessionTiming::where('session_id', $sessionId)->first();
       $activities = StudyActivityTiming::where('session_id', $sessionId)
         ->orderBy('created_at')
@@ -144,6 +164,7 @@ class StudyTimingController extends Controller
         // Create a session timing record if it doesn't exist
         $sessionTiming = StudySessionTiming::create([
           'session_id' => $sessionId,
+          'user_id' => $userId,
           'session_start' => now(),
         ]);
       }
@@ -189,6 +210,13 @@ class StudyTimingController extends Controller
   public function updateSessionTiming(Request $request)
   {
     try {
+      // Get authenticated user
+      $supabaseUser = $request->get('supabase_user');
+      if (!$supabaseUser || !isset($supabaseUser['id'])) {
+        return response()->json(['error' => 'Supabase user not found'], 401);
+      }
+      $userId = $supabaseUser['id'];
+
       $validator = Validator::make($request->all(), [
         'session_id' => 'required|string',
         'total_study_time' => 'required|integer|min:0',
@@ -209,6 +237,7 @@ class StudyTimingController extends Controller
       StudySessionTiming::updateOrCreate(
         ['session_id' => $request->session_id],
         [
+          'user_id' => $userId,
           'total_study_time' => $request->total_study_time,
           'flashcard_time' => $request->flashcard_time,
           'quiz_time' => $request->quiz_time,
