@@ -86,6 +86,8 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('decks/{deck}/materials', [DeckController::class, 'materials']);
   Route::post('decks/{deck}/generate-materials', [DeckController::class, 'generateMissingMaterials']);
   Route::post('user-goals', [UserGoalController::class, 'store']);
+  Route::get('user-goals', [UserGoalController::class, 'index']);
+  Route::put('user-goals/{id}', [UserGoalController::class, 'update']);
   Route::post('user-achievements', [UserAchievementController::class, 'store']);
 
   // Study tracking endpoints
