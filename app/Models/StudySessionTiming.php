@@ -11,6 +11,7 @@ class StudySessionTiming extends Model
 
   protected $fillable = [
     'session_id',
+    'user_id',
     'total_study_time',
     'flashcard_time',
     'quiz_time',
