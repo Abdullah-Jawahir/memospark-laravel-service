@@ -8,7 +8,6 @@ use Illuminate\Support\Str;
 class UserGoal extends Model
 {
     protected $fillable = [
-        'id',
         'user_id',
         'goal_type_id',
         'target_value',
@@ -26,18 +25,20 @@ class UserGoal extends Model
         'daily_goal' => 'integer'
     ];
 
-    protected $keyType = 'string';
-    public $incrementing = false;
+    // Use default integer primary key behavior
+    // protected $keyType = 'string';
+    // public $incrementing = false;
 
-    protected static function boot()
-    {
-        parent::boot();
-        static::creating(function ($model) {
-            if (!$model->id) {
-                $model->id = (string) Str::uuid();
-            }
-        });
-    }
+    // Remove UUID generation since we're using auto-incrementing integers
+    // protected static function boot()
+    // {
+    //     parent::boot();
+    //     static::creating(function ($model) {
+    //         if (!$model->id) {
+    //             $model->id = (string) Str::uuid();
+    //         }
+    //     });
+    // }
 
     public function user()
     {
