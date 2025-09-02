@@ -87,23 +87,26 @@ class DashboardController extends Controller
             ->count('study_material_id');
         $overallProgress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
 
-        // Study time today (sum from new timing tables + fallback to old review-based timing)
+        // Study time (LIFETIME TOTAL - sum from new timing tables + fallback to old review-based timing)
         // Use user_id field in timing tables for accurate user-specific timing
-        $timingStudyTime = StudySessionTiming::whereDate('session_start', $today)
-            ->where('user_id', $userId)
+        // Sum both session timings and activity timings for complete picture - ALL TIME
+        $sessionTimingStudyTime = StudySessionTiming::where('user_id', $userId)
             ->sum('total_study_time');
 
-        // Fallback: Old method for backward compatibility (if no timing data exists)
+        $activityTimingStudyTime = StudyActivityTiming::where('user_id', $userId)
+            ->sum('duration_seconds');
+
+        $totalTimingStudyTime = $sessionTimingStudyTime + $activityTimingStudyTime;
+
+        // Fallback: Old method for backward compatibility (if no timing data exists) - ALL TIME
         $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
-            ->whereDate('reviewed_at', $today)
             ->sum('study_time');
 
         $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
-            ->whereDate('reviewed_at', $today)
             ->sum('study_time');
 
         // Use timing tables if available, otherwise fallback to review-based timing
-        $studyTimeSeconds = $timingStudyTime > 0 ? $timingStudyTime : ($regularStudyTime + $searchStudyTime);
+        $studyTimeSeconds = $totalTimingStudyTime > 0 ? $totalTimingStudyTime : ($regularStudyTime + $searchStudyTime);
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
         $hours = intdiv($studyTimeMinutes, 60);
         $minutes = $studyTimeMinutes % 60;
@@ -211,9 +214,16 @@ class DashboardController extends Controller
 
         if ($goalType === 'study_time') {
             // Calculate study time today using new timing tables with user_id + fallback
-            $timingStudyTime = StudySessionTiming::whereDate('session_start', $today)
+            // Sum both session timings and activity timings for complete picture
+            $sessionTimingStudyTime = StudySessionTiming::whereDate('session_start', $today)
                 ->where('user_id', $userId)
                 ->sum('total_study_time');
+
+            $activityTimingStudyTime = StudyActivityTiming::whereDate('start_time', $today)
+                ->where('user_id', $userId)
+                ->sum('duration_seconds');
+
+            $totalTimingStudyTime = $sessionTimingStudyTime + $activityTimingStudyTime;
 
             // Fallback to review-based timing if no timing data
             $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
@@ -225,7 +235,7 @@ class DashboardController extends Controller
                 ->sum('study_time');
 
             // Use timing tables if available, otherwise fallback to review-based timing
-            $studyTimeSeconds = $timingStudyTime > 0 ? $timingStudyTime : ($regularStudyTime + $searchStudyTime);
+            $studyTimeSeconds = $totalTimingStudyTime > 0 ? $totalTimingStudyTime : ($regularStudyTime + $searchStudyTime);
             $studyTimeMinutes = intval($studyTimeSeconds / 60);
 
             $currentValue = $studyTimeMinutes;
@@ -442,25 +452,28 @@ class DashboardController extends Controller
             ->count('study_material_id');
         $overallProgress = $total > 0 ? round(($reviewed / $total) * 100) : 0;
 
-        // Study time today (use new timing tables + fallback to review-based timing)
-        // Get study time from new timing tables using user_id
-        $timingStudyTime = StudySessionTiming::whereDate('session_start', $today)
-            ->where('user_id', $userId)
+        // Study time (LIFETIME TOTAL - use new timing tables + fallback to review-based timing)
+        // Get study time from new timing tables using user_id - ALL TIME
+        // Sum both session timings and activity timings for complete picture
+        $sessionTimingStudyTime = StudySessionTiming::where('user_id', $userId)
             ->sum('total_study_time');
 
-        // Fallback to review-based timing if no timing data exists
-        if ($timingStudyTime == 0) {
+        $activityTimingStudyTime = StudyActivityTiming::where('user_id', $userId)
+            ->sum('duration_seconds');
+
+        $totalTimingStudyTime = $sessionTimingStudyTime + $activityTimingStudyTime;
+
+        // Fallback to review-based timing if no timing data exists - ALL TIME
+        if ($totalTimingStudyTime == 0) {
             $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
-                ->whereDate('reviewed_at', $today)
                 ->sum('study_time');
 
             $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
-                ->whereDate('reviewed_at', $today)
                 ->sum('study_time');
 
             $studyTimeSeconds = $regularStudyTime + $searchStudyTime;
         } else {
-            $studyTimeSeconds = $timingStudyTime;
+            $studyTimeSeconds = $totalTimingStudyTime;
         }
 
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
@@ -528,12 +541,40 @@ class DashboardController extends Controller
         $remaining = max(0, $dailyGoal - $cardsStudiedToday);
         $progressPercentage = $dailyGoal > 0 ? round(($cardsStudiedToday / $dailyGoal) * 100) : 0;
 
+        // Calculate TODAY'S study time for daily goals (separate from lifetime total)
+        $todaySessionTimingStudyTime = StudySessionTiming::whereDate('session_start', $today)
+            ->where('user_id', $userId)
+            ->sum('total_study_time');
+
+        $todayActivityTimingStudyTime = StudyActivityTiming::whereDate('start_time', $today)
+            ->where('user_id', $userId)
+            ->sum('duration_seconds');
+
+        $todayTotalTimingStudyTime = $todaySessionTimingStudyTime + $todayActivityTimingStudyTime;
+
+        // Fallback to review-based timing for today if no timing data exists
+        if ($todayTotalTimingStudyTime == 0) {
+            $todayRegularStudyTime = FlashcardReview::where('user_id', $localUserId)
+                ->whereDate('reviewed_at', $today)
+                ->sum('study_time');
+
+            $todaySearchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+                ->whereDate('reviewed_at', $today)
+                ->sum('study_time');
+
+            $todayStudyTimeSeconds = $todayRegularStudyTime + $todaySearchStudyTime;
+        } else {
+            $todayStudyTimeSeconds = $todayTotalTimingStudyTime;
+        }
+
+        $todayStudyTimeMinutes = intval($todayStudyTimeSeconds / 60);
+
         // Get user's additional goals (new goal system)
         $userGoals = \App\Models\UserGoal::where('user_id', $userId)
             ->where('is_active', true)
             ->with('goalType')
             ->get()
-            ->map(function ($userGoal) use ($cardsStudiedToday, $studyTimeMinutes, $localUserId, $today) {
+            ->map(function ($userGoal) use ($cardsStudiedToday, $todayStudyTimeMinutes, $localUserId, $today) {
                 $current_value = $userGoal->current_value;
 
                 // For flashcard goals, use today's studied count
@@ -549,7 +590,7 @@ class DashboardController extends Controller
                     $userGoal->goalType && $userGoal->goalType->category === 'time' &&
                     $userGoal->goalType->unit === 'minutes'
                 ) {
-                    $current_value = $studyTimeMinutes;
+                    $current_value = $todayStudyTimeMinutes;
                 }
 
                 // For engagement goals, calculate based on review activity and ratings
