@@ -102,7 +102,6 @@ Route::middleware('supabase.auth')->group(function () {
   Route::post('study/timing/end', [StudyTimingController::class, 'endActivity']);
   Route::post('study/timing/record', [StudyTimingController::class, 'recordActivity']);
   Route::get('study/timing/summary/{sessionId}', [StudyTimingController::class, 'getTimingSummary']);
-  Route::post('study/timing/update-session', [StudyTimingController::class, 'updateSessionTiming']);
 
   // Student Goal Management endpoints
   Route::get('student-goals/types', [App\Http\Controllers\StudentGoalController::class, 'getGoalTypes']);
