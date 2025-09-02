@@ -11,6 +11,7 @@ use App\Http\Controllers\DeckController;
 use App\Http\Controllers\UserGoalController;
 use App\Http\Controllers\UserAchievementController;
 use App\Http\Controllers\StudyTrackingController;
+use App\Http\Controllers\StudyTimingController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchFlashcardsController;
@@ -93,6 +94,13 @@ Route::middleware('supabase.auth')->group(function () {
   Route::get('study/stats', [StudyTrackingController::class, 'getStats']);
   Route::get('study/recent-activity', [StudyTrackingController::class, 'getRecentActivity']);
   Route::post('study/enrich-materials', [StudyTrackingController::class, 'enrichMaterials']);
+
+  // Study timing endpoints
+  Route::post('study/timing/start', [StudyTimingController::class, 'startActivity']);
+  Route::post('study/timing/end', [StudyTimingController::class, 'endActivity']);
+  Route::post('study/timing/record', [StudyTimingController::class, 'recordActivity']);
+  Route::get('study/timing/summary/{sessionId}', [StudyTimingController::class, 'getTimingSummary']);
+  Route::post('study/timing/update-session', [StudyTimingController::class, 'updateSessionTiming']);
 
   // Student Goal Management endpoints
   Route::get('student-goals/types', [App\Http\Controllers\StudentGoalController::class, 'getGoalTypes']);
