@@ -23,7 +23,7 @@ class StudyTrackingController extends Controller
     $request->validate([
       'study_material_id' => 'required|exists:study_materials,id',
       'rating' => 'required|in:again,hard,good,easy',
-      'study_time' => 'required|integer|min:1', // Study time in seconds
+      'study_time' => 'required|integer|min:0', // Study time in seconds (allow 0)
       'session_id' => 'nullable|string', // Optional session identifier
     ]);
 
