@@ -472,7 +472,7 @@ class DashboardController extends Controller
             ->where('is_active', true)
             ->with('goalType')
             ->get()
-            ->map(function ($userGoal) use ($cardsStudiedToday) {
+            ->map(function ($userGoal) use ($cardsStudiedToday, $studyTimeMinutes, $localUserId, $today) {
                 $current_value = $userGoal->current_value;
 
                 // For flashcard goals, use today's studied count
@@ -481,6 +481,58 @@ class DashboardController extends Controller
                     $userGoal->goalType->unit === 'cards'
                 ) {
                     $current_value = $cardsStudiedToday;
+                }
+
+                // For time-based goals, use today's study time in minutes
+                if (
+                    $userGoal->goalType && $userGoal->goalType->category === 'time' &&
+                    $userGoal->goalType->unit === 'minutes'
+                ) {
+                    $current_value = $studyTimeMinutes;
+                }
+
+                // For engagement goals, calculate based on review activity and ratings
+                if (
+                    $userGoal->goalType && $userGoal->goalType->category === 'engagement' &&
+                    $userGoal->goalType->unit === 'points'
+                ) {
+                    // Calculate engagement score based on today's reviews
+                    $todaysReviews = FlashcardReview::where('user_id', $localUserId)
+                        ->whereDate('reviewed_at', $today)
+                        ->get();
+
+                    $engagementScore = 0;
+                    foreach ($todaysReviews as $review) {
+                        // Points based on rating
+                        $ratingPoints = [
+                            'again' => 1,
+                            'hard' => 2,
+                            'good' => 3,
+                            'easy' => 4
+                        ];
+                        $engagementScore += $ratingPoints[$review->rating] ?? 1;
+
+                        // Time bonus: +1 point per 30 seconds of study time
+                        $engagementScore += intdiv($review->study_time, 30);
+                    }
+
+                    // Add points from search flashcard reviews
+                    $searchReviews = \App\Models\SearchFlashcardReview::where('user_id', $userGoal->user_id)
+                        ->whereDate('reviewed_at', $today)
+                        ->get();
+
+                    foreach ($searchReviews as $review) {
+                        $ratingPoints = [
+                            'again' => 1,
+                            'hard' => 2,
+                            'good' => 3,
+                            'easy' => 4
+                        ];
+                        $engagementScore += $ratingPoints[$review->rating] ?? 1;
+                        $engagementScore += intdiv($review->study_time, 30);
+                    }
+
+                    $current_value = $engagementScore;
                 }
 
                 $progress_percentage = $userGoal->target_value > 0 ?
