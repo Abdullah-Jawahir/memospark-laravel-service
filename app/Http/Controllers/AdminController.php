@@ -611,11 +611,33 @@ class AdminController extends Controller
     ]);
 
     try {
-      // For now, we'll store this in a simple way
-      // In the future, you might want a separate settings table
+      // Update the default value for Daily Flashcards goal type
+      // We'll use the student_default as the main default since students are the primary users
+      $dailyFlashcardsGoal = \App\Models\GoalType::where('name', 'Daily Flashcards')->first();
 
-      // This is a placeholder implementation
-      // You could store these defaults in a settings table or config
+      if ($dailyFlashcardsGoal) {
+        $dailyFlashcardsGoal->update(['default_value' => $request->student_default]);
+      }
+
+      // Store admin default in a way we can retrieve it
+      // For now, we'll create or update a special "Admin Daily Flashcards" goal type
+      $adminGoalType = \App\Models\GoalType::firstOrCreate(
+        ['name' => 'Admin Daily Flashcards'],
+        [
+          'id' => \Illuminate\Support\Str::uuid(),
+          'description' => 'Daily flashcard goal for admin users',
+          'unit' => 'cards',
+          'category' => 'study',
+          'is_active' => false, // Hidden from general selection
+          'default_value' => $request->admin_default,
+          'min_value' => 1,
+          'max_value' => 200
+        ]
+      );
+
+      if ($adminGoalType->wasRecentlyCreated === false) {
+        $adminGoalType->update(['default_value' => $request->admin_default]);
+      }
 
       return response()->json([
         'message' => 'Default goals updated successfully',
@@ -627,6 +649,30 @@ class AdminController extends Controller
     } catch (\Exception $e) {
       \Illuminate\Support\Facades\Log::error('Update default goals error: ' . $e->getMessage());
       return response()->json(['error' => 'Failed to update default goals'], 500);
+    }
+  }
+
+  /**
+   * Get default goal values
+   */
+  public function getDefaultGoals(Request $request)
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'Supabase user not found'], 401);
+    }
+
+    try {
+      $studentDefault = \App\Models\GoalType::where('name', 'Daily Flashcards')->value('default_value') ?? 50;
+      $adminDefault = \App\Models\GoalType::where('name', 'Admin Daily Flashcards')->value('default_value') ?? 25;
+
+      return response()->json([
+        'student_default' => $studentDefault,
+        'admin_default' => $adminDefault
+      ]);
+    } catch (\Exception $e) {
+      \Illuminate\Support\Facades\Log::error('Get default goals error: ' . $e->getMessage());
+      return response()->json(['error' => 'Failed to fetch default goals'], 500);
     }
   }
 
