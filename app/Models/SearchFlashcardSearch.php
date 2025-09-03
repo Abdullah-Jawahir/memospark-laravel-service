@@ -54,14 +54,6 @@ class SearchFlashcardSearch extends Model
     }
 
     /**
-     * Get the difficult cards for this search
-     */
-    public function difficultCards(): HasMany
-    {
-        return $this->hasMany(SearchFlashcardDifficultCard::class, 'search_id');
-    }
-
-    /**
      * Scope for completed searches
      */
     public function scopeCompleted($query)
