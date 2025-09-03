@@ -55,12 +55,14 @@ class FileProcessCacheService
           ];
         }
         if ($cache->status === 'failed') {
+          // Delete failed cache entry to allow retry
+          $cache->delete();
           return [
-            'status' => 'failed',
+            'status' => 'not_cached',
             'result' => null,
-            'message' => 'Processing failed. Please try again.',
+            'message' => 'Previous processing failed. Ready to retry.',
             'file_hash' => $fileHash,
-            'document_id' => $cache->document_id,
+            'document_id' => null,
           ];
         }
       }
@@ -112,12 +114,17 @@ class FileProcessCacheService
           'message' => null,
         ];
       } else if ($cache->status === 'failed') {
-        // Optionally allow re-processing, or return failed
-        return [
-          'status' => 'failed',
-          'result' => null,
-          'message' => 'Processing failed. Please try again.',
-        ];
+        // Delete failed cache entry and recreate for retry
+        $cache->delete();
+        $cache = FileProcessCache::create([
+          'file_hash' => $fileHash,
+          'language' => $language,
+          'difficulty' => $difficulty,
+          'card_types' => $cardTypes,
+          'card_types_hash' => hash('sha256', json_encode($cardTypes)),
+          'status' => 'processing',
+          'document_id' => $documentId,
+        ]);
       }
 
       try {

@@ -14,7 +14,8 @@ class FlashcardReviewController extends Controller
         $validated = $request->validate([
             'study_material_id' => 'required|exists:study_materials,id',
             'rating' => 'required|in:again,hard,good,easy',
-            'reviewed_at' => 'required|date',
+            'reviewed_at' => 'nullable|date',
+            'study_time' => 'nullable|integer|min:0',
             'session_id' => 'nullable|string',
         ]);
 
@@ -32,7 +33,8 @@ class FlashcardReviewController extends Controller
             'user_id' => $supabaseUser['id'],
             'study_material_id' => $validated['study_material_id'],
             'rating' => $validated['rating'],
-            'reviewed_at' => $validated['reviewed_at'],
+            'reviewed_at' => $validated['reviewed_at'] ?? now(),
+            'study_time' => $validated['study_time'] ?? 0,
             'session_id' => $validated['session_id'] ?? null,
         ]);
 

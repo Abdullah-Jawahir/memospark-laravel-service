@@ -58,6 +58,8 @@ class FlashcardController extends Controller
       ], 202);
     }
 
+    // Note: 'failed' status is now handled by clearing cache in FileProcessCacheService
+    // so we should not reach this condition anymore, but keeping it for safety  
     if ($cacheResult['status'] === 'failed') {
       return response()->json([
         'success' => false,

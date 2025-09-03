@@ -15,6 +15,12 @@ class FlashcardReview extends Model
         'rating',
         'reviewed_at',
         'session_id',
+        'study_time',
+    ];
+
+    protected $casts = [
+        'reviewed_at' => 'datetime',
+        'study_time' => 'integer',
     ];
 
     public function user()

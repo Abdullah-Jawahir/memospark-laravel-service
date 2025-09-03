@@ -18,6 +18,14 @@ class Deck extends Model
 
     public function studyMaterials()
     {
-        return $this->hasMany(StudyMaterial::class, 'document_id', 'id');
+        // Deck -> Document (deck_id) -> StudyMaterial (document_id)
+        return $this->hasManyThrough(
+            StudyMaterial::class,
+            Document::class,
+            'deck_id',      // Foreign key on documents table...
+            'document_id',  // Foreign key on study_materials table...
+            'id',           // Local key on decks table...
+            'id'            // Local key on documents table...
+        );
     }
 }

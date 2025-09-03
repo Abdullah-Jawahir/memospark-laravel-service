@@ -21,6 +21,14 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'user_type',
+        'points',
+        'supabase_user_id',
+        'email_verified_at',
+    ];
+
+    protected $attributes = [
+        'password' => null,
     ];
 
     /**
@@ -48,7 +56,7 @@ class User extends Authenticatable
 
     public function decks()
     {
-        return $this->hasMany(Deck::class);
+        return $this->hasMany(Deck::class, 'user_id', 'supabase_user_id');
     }
 
     public function userGoals()

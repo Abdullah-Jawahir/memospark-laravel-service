@@ -10,6 +10,8 @@ class Achievement extends Model
         'name',
         'description',
         'icon',
+        'criteria',
+        'points',
     ];
 
     public function users()

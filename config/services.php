@@ -39,4 +39,10 @@ return [
         'url' => env('FASTAPI_URL', 'http://localhost:8001'),
     ],
 
+    // Centralized Supabase configuration
+    'supabase' => [
+        'url' => env('SUPABASE_URL'),
+        'key' => env('SUPABASE_KEY'),
+    ],
+
 ];
