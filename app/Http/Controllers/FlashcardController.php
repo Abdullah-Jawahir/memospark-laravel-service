@@ -305,12 +305,30 @@ class FlashcardController extends Controller
    */
   public function addFlashcard(Request $request, $materialId): JsonResponse
   {
-    $request->validate([
-      'question' => 'required|string|max:1000',
+    // Get the card type to determine validation rules
+    $cardType = $request->input('type', 'flashcard');
+
+    // Define validation rules based on card type
+    $validationRules = [
       'answer' => 'required|string|max:2000',
       'difficulty' => 'sometimes|string|in:beginner,intermediate,advanced',
-      'type' => 'sometimes|string|in:flashcard,multiple_choice,true_false'
-    ]);
+      'type' => 'sometimes|string|in:flashcard,quiz,exercise,multiple_choice,true_false,fill_blank'
+    ];
+
+    // Add specific field validation based on card type
+    if ($cardType === 'exercise') {
+      $validationRules['instruction'] = 'required|string|max:1000';
+    } else {
+      $validationRules['question'] = 'required|string|max:1000';
+    }
+
+    // Add options validation for quiz types
+    if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
+      $validationRules['options'] = 'sometimes|array|min:2|max:6';
+      $validationRules['options.*'] = 'string|max:500';
+    }
+
+    $request->validate($validationRules);
 
     $supabaseUser = $request->get('supabase_user');
     if (!$supabaseUser || !isset($supabaseUser['id'])) {
@@ -325,13 +343,24 @@ class FlashcardController extends Controller
         });
       })->findOrFail($materialId);
 
-      // Create new card content
+      // Create new card content based on type
       $newCardContent = [
-        'type' => $request->input('type', 'flashcard') === 'flashcard' ? 'Q&A' : $request->input('type'),
-        'question' => $request->input('question'),
+        'type' => $cardType === 'flashcard' ? 'Q&A' : $cardType,
         'answer' => $request->input('answer'),
         'difficulty' => $request->input('difficulty', 'intermediate')
       ];
+
+      // Add type-specific fields
+      if ($cardType === 'exercise') {
+        $newCardContent['instruction'] = $request->input('instruction');
+      } else {
+        $newCardContent['question'] = $request->input('question');
+      }
+
+      // Add options for quiz types
+      if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
+        $newCardContent['options'] = $request->input('options', []);
+      }
 
       // Create new StudyMaterial record
       $newStudyMaterial = StudyMaterial::create([
@@ -344,12 +373,14 @@ class FlashcardController extends Controller
         'success' => true,
         'data' => [
           'id' => $newStudyMaterial->id,
-          'question' => $newCardContent['question'],
+          'question' => $newCardContent['question'] ?? null,
+          'instruction' => $newCardContent['instruction'] ?? null,
           'answer' => $newCardContent['answer'],
           'difficulty' => $newCardContent['difficulty'],
+          'options' => $newCardContent['options'] ?? null,
           'type' => $newStudyMaterial->type
         ],
-        'message' => 'Flashcard added successfully'
+        'message' => ucfirst($cardType) . ' added successfully'
       ]);
     } catch (\Exception $e) {
       return response()->json([
