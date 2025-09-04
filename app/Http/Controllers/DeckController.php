@@ -102,6 +102,7 @@ class DeckController extends Controller
                 if (isset($content['question']) && isset($content['options'])) {
                     // Single quiz format
                     $response['quizzes'][] = [
+                        'id' => $m->id,  // Add StudyMaterial ID
                         'type' => 'quiz',
                         'question' => $content['question'],
                         'options' => $content['options'],
@@ -114,6 +115,7 @@ class DeckController extends Controller
                     foreach ($content as $qz) {
                         if (isset($qz['question']) && isset($qz['options'])) {
                             $response['quizzes'][] = [
+                                'id' => $m->id,  // Add StudyMaterial ID
                                 'type' => 'quiz',
                                 'question' => $qz['question'],
                                 'options' => $qz['options'],
@@ -129,6 +131,7 @@ class DeckController extends Controller
                 if (isset($content['type']) && isset($content['instruction'])) {
                     // Single exercise format
                     $response['exercises'][] = [
+                        'id' => $m->id,  // Add StudyMaterial ID
                         'type' => $content['type'],
                         'instruction' => $content['instruction'],
                         'exercise_text' => $content['exercise_text'] ?? null,
@@ -142,6 +145,7 @@ class DeckController extends Controller
                     foreach ($content as $ex) {
                         if (isset($ex['type']) && isset($ex['instruction'])) {
                             $response['exercises'][] = [
+                                'id' => $m->id,  // Add StudyMaterial ID
                                 'type' => $ex['type'],
                                 'instruction' => $ex['instruction'],
                                 'exercise_text' => $ex['exercise_text'] ?? null,
