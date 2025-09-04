@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Deck;
+use Illuminate\Http\Request;
 use App\Models\StudyMaterial;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class DeckController extends Controller
 {
@@ -164,6 +166,17 @@ class DeckController extends Controller
             'total_exercises' => count($response['exercises']),
         ];
 
+        // Also include the raw materials for frontend to use when adding new cards
+        $response['materials'] = $materials->map(function ($material) {
+            return [
+                'id' => $material->id,
+                'type' => $material->type,
+                'title' => ucfirst($material->type) . ' Material',
+                'content_count' => is_array($material->content) ? count($material->content) : 1,
+                'document_id' => $material->document_id
+            ];
+        });
+
         return response()->json($response);
     }
 
@@ -204,6 +217,8 @@ class DeckController extends Controller
                 ->unique()
                 ->toArray();
 
+            Log::info($existingTypes);
+
             $missingTypes = array_diff($requestedTypes, $existingTypes);
 
             if (!empty($missingTypes)) {
@@ -236,6 +251,146 @@ class DeckController extends Controller
                 'message' => 'All requested material types already exist for this deck.',
                 'status' => 'complete'
             ]);
+        }
+    }
+
+    /**
+     * Get a specific deck with its details
+     *
+     * @param Request $request
+     * @param int $deckId
+     * @return JsonResponse
+     */
+    public function show(Request $request, $deckId)
+    {
+        $supabaseUser = $request->get('supabase_user');
+        if (!$supabaseUser || !isset($supabaseUser['id'])) {
+            return response()->json(['error' => 'Supabase user not found'], 401);
+        }
+
+        // Ensure deck belongs to user
+        $deck = Deck::where('id', $deckId)->where('user_id', $supabaseUser['id'])->first();
+        if (!$deck) {
+            return response()->json(['error' => 'Deck not found or access denied'], 404);
+        }
+
+        // Get deck with materials count
+        $deckWithCounts = Deck::where('id', $deckId)
+            ->with(['studyMaterials'])
+            ->first();
+
+        $totalCards = 0;
+        $materialTypes = [];
+        $flashcardCount = 0;
+        $quizCount = 0;
+        $exerciseCount = 0;
+
+        foreach ($deckWithCounts->studyMaterials as $material) {
+            $content = $material->content ?? [];
+            $materialTypes[] = $material->type;
+
+            if ($material->type === 'flashcard') {
+                // Handle both single flashcard and array of flashcards
+                if (isset($content['question']) && isset($content['answer'])) {
+                    // Single flashcard format
+                    $flashcardCount++;
+                } elseif (is_array($content)) {
+                    // Array of flashcards
+                    foreach ($content as $card) {
+                        if (isset($card['question']) && isset($card['answer'])) {
+                            $flashcardCount++;
+                        }
+                    }
+                }
+            } elseif ($material->type === 'quiz') {
+                // Handle both single quiz and array of quizzes
+                if (isset($content['question']) && isset($content['options'])) {
+                    // Single quiz format
+                    $quizCount++;
+                } elseif (is_array($content)) {
+                    // Array of quizzes
+                    foreach ($content as $quiz) {
+                        if (isset($quiz['question']) && isset($quiz['options'])) {
+                            $quizCount++;
+                        }
+                    }
+                }
+            } elseif ($material->type === 'exercise') {
+                // Handle both single exercise and array of exercises
+                if (isset($content['type']) && isset($content['instruction'])) {
+                    // Single exercise format
+                    $exerciseCount++;
+                } elseif (is_array($content)) {
+                    // Array of exercises
+                    foreach ($content as $exercise) {
+                        if (isset($exercise['type']) && isset($exercise['instruction'])) {
+                            $exerciseCount++;
+                        }
+                    }
+                }
+            }
+        }
+
+        $totalCards = $flashcardCount + $quizCount + $exerciseCount;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $deck->id,
+                'name' => $deck->name,
+                'card_count' => $totalCards,
+                'flashcard_count' => $flashcardCount,
+                'quiz_count' => $quizCount,
+                'exercise_count' => $exerciseCount,
+                'material_types' => array_unique($materialTypes),
+                'created_at' => $deck->created_at,
+                'updated_at' => $deck->updated_at
+            ]
+        ]);
+    }
+
+    /**
+     * Update deck details (e.g., name)
+     *
+     * @param Request $request
+     * @param int $deckId
+     * @return JsonResponse
+     */
+    public function update(Request $request, $deckId)
+    {
+        $supabaseUser = $request->get('supabase_user');
+        if (!$supabaseUser || !isset($supabaseUser['id'])) {
+            return response()->json(['error' => 'Supabase user not found'], 401);
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        // Ensure deck belongs to user
+        $deck = Deck::where('id', $deckId)->where('user_id', $supabaseUser['id'])->first();
+        if (!$deck) {
+            return response()->json(['error' => 'Deck not found or access denied'], 404);
+        }
+
+        try {
+            $deck->name = $request->input('name');
+            $deck->save();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $deck->id,
+                    'name' => $deck->name,
+                    'updated_at' => $deck->updated_at
+                ],
+                'message' => 'Deck updated successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to update deck: ' . $e->getMessage()
+            ], 500);
         }
     }
 }
