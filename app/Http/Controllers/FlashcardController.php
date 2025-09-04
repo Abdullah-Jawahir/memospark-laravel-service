@@ -7,6 +7,7 @@ use App\Services\FileProcessCacheService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\FileProcessCache;
+use App\Models\StudyMaterial;
 use Illuminate\Support\Facades\DB;
 
 class FlashcardController extends Controller
@@ -151,5 +152,246 @@ class FlashcardController extends Controller
       'result' => null,
       'message' => $cache->status === 'failed' ? 'Processing failed.' : null
     ]);
+  }
+
+  /**
+   * Update a single flashcard within a StudyMaterial
+   *
+   * @param Request $request
+   * @param int $materialId
+   * @param int $cardIndex
+   * @return JsonResponse
+   */
+  public function updateFlashcard(Request $request, $materialId, $cardIndex): JsonResponse
+  {
+    $request->validate([
+      'question' => 'required|string|max:1000',
+      'answer' => 'required|string|max:2000',
+      'difficulty' => 'sometimes|string|in:beginner,intermediate,advanced',
+      'type' => 'sometimes|string|in:flashcard,multiple_choice,true_false'
+    ]);
+
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'User not authenticated'], 401);
+    }
+
+    try {
+      // Find the StudyMaterial and ensure user owns it via deck
+      $studyMaterial = StudyMaterial::whereHas('document', function ($query) use ($supabaseUser) {
+        $query->whereHas('deck', function ($deckQuery) use ($supabaseUser) {
+          $deckQuery->where('user_id', $supabaseUser['id']);
+        });
+      })->findOrFail($materialId);
+
+      $content = $studyMaterial->content;
+
+      // Handle both single card format and array format
+      if (isset($content['question']) && $cardIndex == 0) {
+        // Single card format - update directly
+        $content['question'] = $request->input('question');
+        $content['answer'] = $request->input('answer');
+
+        if ($request->has('difficulty')) {
+          $content['difficulty'] = $request->input('difficulty');
+        }
+        if ($request->has('type')) {
+          $content['type'] = $request->input('type');
+        }
+
+        $cardData = $content;
+      } else {
+        // Array format - update by index
+        if (!isset($content[$cardIndex])) {
+          return response()->json(['error' => 'Card not found'], 404);
+        }
+
+        $content[$cardIndex]['question'] = $request->input('question');
+        $content[$cardIndex]['answer'] = $request->input('answer');
+
+        if ($request->has('difficulty')) {
+          $content[$cardIndex]['difficulty'] = $request->input('difficulty');
+        }
+        if ($request->has('type')) {
+          $content[$cardIndex]['type'] = $request->input('type');
+        }
+
+        $cardData = $content[$cardIndex];
+      }
+
+      $studyMaterial->content = $content;
+      $studyMaterial->save();
+
+      return response()->json([
+        'success' => true,
+        'data' => $cardData,
+        'message' => 'Flashcard updated successfully'
+      ]);
+    } catch (\Exception $e) {
+      return response()->json([
+        'success' => false,
+        'error' => 'Failed to update flashcard: ' . $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Delete a single flashcard from a StudyMaterial
+   *
+   * @param Request $request
+   * @param int $materialId
+   * @param int $cardIndex
+   * @return JsonResponse
+   */
+  public function deleteFlashcard(Request $request, $materialId, $cardIndex): JsonResponse
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'User not authenticated'], 401);
+    }
+
+    try {
+      // Find the StudyMaterial and ensure user owns it via deck
+      $studyMaterial = StudyMaterial::whereHas('document', function ($query) use ($supabaseUser) {
+        $query->whereHas('deck', function ($deckQuery) use ($supabaseUser) {
+          $deckQuery->where('user_id', $supabaseUser['id']);
+        });
+      })->findOrFail($materialId);
+
+      $content = $studyMaterial->content;
+
+      // Handle both single card format and array format
+      if (isset($content['question']) && $cardIndex == 0) {
+        // Single card format - delete the entire StudyMaterial
+        $studyMaterial->delete();
+
+        return response()->json([
+          'success' => true,
+          'message' => 'Flashcard deleted successfully',
+          'remaining_cards' => 0
+        ]);
+      } else {
+        // Array format - remove by index
+        if (!isset($content[$cardIndex])) {
+          return response()->json(['error' => 'Card not found'], 404);
+        }
+
+        // Remove the card
+        array_splice($content, $cardIndex, 1);
+
+        $studyMaterial->content = $content;
+        $studyMaterial->save();
+
+        return response()->json([
+          'success' => true,
+          'message' => 'Flashcard deleted successfully',
+          'remaining_cards' => count($content)
+        ]);
+      }
+    } catch (\Exception $e) {
+      return response()->json([
+        'success' => false,
+        'error' => 'Failed to delete flashcard: ' . $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Add a new flashcard to a StudyMaterial
+   *
+   * @param Request $request
+   * @param int $materialId
+   * @return JsonResponse
+   */
+  public function addFlashcard(Request $request, $materialId): JsonResponse
+  {
+    $request->validate([
+      'question' => 'required|string|max:1000',
+      'answer' => 'required|string|max:2000',
+      'difficulty' => 'sometimes|string|in:beginner,intermediate,advanced',
+      'type' => 'sometimes|string|in:flashcard,multiple_choice,true_false'
+    ]);
+
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'User not authenticated'], 401);
+    }
+
+    try {
+      // Find a reference StudyMaterial to get the document_id and ensure user owns it
+      $referenceMaterial = StudyMaterial::whereHas('document', function ($query) use ($supabaseUser) {
+        $query->whereHas('deck', function ($deckQuery) use ($supabaseUser) {
+          $deckQuery->where('user_id', $supabaseUser['id']);
+        });
+      })->findOrFail($materialId);
+
+      // Create new card content
+      $newCardContent = [
+        'type' => $request->input('type', 'flashcard') === 'flashcard' ? 'Q&A' : $request->input('type'),
+        'question' => $request->input('question'),
+        'answer' => $request->input('answer'),
+        'difficulty' => $request->input('difficulty', 'intermediate')
+      ];
+
+      // Create new StudyMaterial record
+      $newStudyMaterial = StudyMaterial::create([
+        'document_id' => $referenceMaterial->document_id,
+        'type' => $request->input('type', 'flashcard'),
+        'content' => $newCardContent
+      ]);
+
+      return response()->json([
+        'success' => true,
+        'data' => [
+          'id' => $newStudyMaterial->id,
+          'question' => $newCardContent['question'],
+          'answer' => $newCardContent['answer'],
+          'difficulty' => $newCardContent['difficulty'],
+          'type' => $newStudyMaterial->type
+        ],
+        'message' => 'Flashcard added successfully'
+      ]);
+    } catch (\Exception $e) {
+      return response()->json([
+        'success' => false,
+        'error' => 'Failed to add flashcard: ' . $e->getMessage()
+      ], 500);
+    }
+  }
+
+  /**
+   * Get all flashcards for a specific StudyMaterial
+   *
+   * @param Request $request
+   * @param int $materialId
+   * @return JsonResponse
+   */
+  public function getFlashcards(Request $request, $materialId): JsonResponse
+  {
+    $supabaseUser = $request->get('supabase_user');
+    if (!$supabaseUser || !isset($supabaseUser['id'])) {
+      return response()->json(['error' => 'User not authenticated'], 401);
+    }
+
+    try {
+      // Find the StudyMaterial and ensure user owns it via deck
+      $studyMaterial = StudyMaterial::whereHas('document', function ($query) use ($supabaseUser) {
+        $query->whereHas('deck', function ($deckQuery) use ($supabaseUser) {
+          $deckQuery->where('user_id', $supabaseUser['id']);
+        });
+      })->findOrFail($materialId);
+
+      return response()->json([
+        'success' => true,
+        'data' => $studyMaterial->content,
+        'material_type' => $studyMaterial->type,
+        'language' => $studyMaterial->language
+      ]);
+    } catch (\Exception $e) {
+      return response()->json([
+        'success' => false,
+        'error' => 'Failed to get flashcards: ' . $e->getMessage()
+      ], 500);
+    }
   }
 }
