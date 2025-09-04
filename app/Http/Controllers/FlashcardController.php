@@ -164,12 +164,30 @@ class FlashcardController extends Controller
    */
   public function updateFlashcard(Request $request, $materialId, $cardIndex): JsonResponse
   {
-    $request->validate([
-      'question' => 'required|string|max:1000',
+    // Get the card type to determine validation rules
+    $cardType = $request->input('type', 'flashcard');
+
+    // Define validation rules based on card type
+    $validationRules = [
       'answer' => 'required|string|max:2000',
       'difficulty' => 'sometimes|string|in:beginner,intermediate,advanced',
-      'type' => 'sometimes|string|in:flashcard,multiple_choice,true_false'
-    ]);
+      'type' => 'sometimes|string|in:flashcard,quiz,exercise,multiple_choice,true_false,fill_blank'
+    ];
+
+    // Add specific field validation based on card type
+    if ($cardType === 'exercise') {
+      $validationRules['instruction'] = 'required|string|max:1000';
+    } else {
+      $validationRules['question'] = 'required|string|max:1000';
+    }
+
+    // Add options validation for quiz types
+    if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
+      $validationRules['options'] = 'sometimes|array|min:2|max:6';
+      $validationRules['options.*'] = 'string|max:500';
+    }
+
+    $request->validate($validationRules);
 
     $supabaseUser = $request->get('supabase_user');
     if (!$supabaseUser || !isset($supabaseUser['id'])) {
@@ -187,9 +205,14 @@ class FlashcardController extends Controller
       $content = $studyMaterial->content;
 
       // Handle both single card format and array format
-      if (isset($content['question']) && $cardIndex == 0) {
+      if ((isset($content['question']) || isset($content['instruction'])) && $cardIndex == 0) {
         // Single card format - update directly
-        $content['question'] = $request->input('question');
+        if ($cardType === 'exercise') {
+          $content['instruction'] = $request->input('instruction');
+        } else {
+          $content['question'] = $request->input('question');
+        }
+
         $content['answer'] = $request->input('answer');
 
         if ($request->has('difficulty')) {
@@ -197,6 +220,9 @@ class FlashcardController extends Controller
         }
         if ($request->has('type')) {
           $content['type'] = $request->input('type');
+        }
+        if ($request->has('options')) {
+          $content['options'] = $request->input('options');
         }
 
         $cardData = $content;
@@ -206,7 +232,12 @@ class FlashcardController extends Controller
           return response()->json(['error' => 'Card not found'], 404);
         }
 
-        $content[$cardIndex]['question'] = $request->input('question');
+        if ($cardType === 'exercise') {
+          $content[$cardIndex]['instruction'] = $request->input('instruction');
+        } else {
+          $content[$cardIndex]['question'] = $request->input('question');
+        }
+
         $content[$cardIndex]['answer'] = $request->input('answer');
 
         if ($request->has('difficulty')) {
@@ -214,6 +245,9 @@ class FlashcardController extends Controller
         }
         if ($request->has('type')) {
           $content[$cardIndex]['type'] = $request->input('type');
+        }
+        if ($request->has('options')) {
+          $content[$cardIndex]['options'] = $request->input('options');
         }
 
         $cardData = $content[$cardIndex];
@@ -225,7 +259,7 @@ class FlashcardController extends Controller
       return response()->json([
         'success' => true,
         'data' => $cardData,
-        'message' => 'Flashcard updated successfully'
+        'message' => ucfirst($cardType) . ' updated successfully'
       ]);
     } catch (\Exception $e) {
       return response()->json([
@@ -261,13 +295,13 @@ class FlashcardController extends Controller
       $content = $studyMaterial->content;
 
       // Handle both single card format and array format
-      if (isset($content['question']) && $cardIndex == 0) {
+      if ((isset($content['question']) || isset($content['instruction'])) && $cardIndex == 0) {
         // Single card format - delete the entire StudyMaterial
         $studyMaterial->delete();
 
         return response()->json([
           'success' => true,
-          'message' => 'Flashcard deleted successfully',
+          'message' => 'Card deleted successfully',
           'remaining_cards' => 0
         ]);
       } else {
@@ -284,7 +318,7 @@ class FlashcardController extends Controller
 
         return response()->json([
           'success' => true,
-          'message' => 'Flashcard deleted successfully',
+          'message' => 'Card deleted successfully',
           'remaining_cards' => count($content)
         ]);
       }
