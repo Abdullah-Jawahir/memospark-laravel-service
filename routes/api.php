@@ -55,6 +55,12 @@ Route::middleware(['throttle:api', SupabaseAuth::class])->group(function () {
 });
 
 Route::middleware('supabase.auth')->group(function () {
+  // Individual flashcard management routes
+  Route::get('study-materials/{materialId}/flashcards', [FlashcardController::class, 'getFlashcards']);
+  Route::post('study-materials/{materialId}/flashcards', [FlashcardController::class, 'addFlashcard']);
+  Route::put('study-materials/{materialId}/flashcards/{cardIndex}', [FlashcardController::class, 'updateFlashcard']);
+  Route::delete('study-materials/{materialId}/flashcards/{cardIndex}', [FlashcardController::class, 'deleteFlashcard']);
+
   Route::get('dashboard', [DashboardController::class, 'dashboard']);
   Route::get('dashboard/user-info', [DashboardController::class, 'userInfo']);
   Route::get('dashboard/overview', [DashboardController::class, 'overview']);
@@ -83,6 +89,8 @@ Route::middleware('supabase.auth')->group(function () {
 
   Route::post('decks', [DeckController::class, 'store']);
   Route::get('decks', [DeckController::class, 'index']);
+  Route::get('decks/{deck}', [DeckController::class, 'show']);
+  Route::put('decks/{deck}', [DeckController::class, 'update']);
   Route::get('decks/{deck}/materials', [DeckController::class, 'materials']);
   Route::post('decks/{deck}/generate-materials', [DeckController::class, 'generateMissingMaterials']);
   Route::post('user-goals', [UserGoalController::class, 'store']);
