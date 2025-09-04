@@ -507,6 +507,7 @@ class DashboardController extends Controller
             }
 
             return [
+                'id' => $deck->id,
                 'name' => $deck->name,
                 'card_count' => $total,
                 'last_studied' => $lastStudiedText,
@@ -516,7 +517,7 @@ class DashboardController extends Controller
 
         // Today's goal - use new goal system
         // First check if user has a Daily Flashcards goal in the new system
-        $dailyFlashcardsGoal = \App\Models\UserGoal::where('user_id', $userId)
+        $dailyFlashcardsGoal = UserGoal::where('user_id', $userId)
             ->whereHas('goalType', function ($query) {
                 $query->where('name', 'Daily Flashcards');
             })
@@ -562,7 +563,7 @@ class DashboardController extends Controller
         $todayStudyTimeMinutes = intval($todayStudyTimeSeconds / 60);
 
         // Get user's additional goals (new goal system)
-        $userGoals = \App\Models\UserGoal::where('user_id', $userId)
+        $userGoals = UserGoal::where('user_id', $userId)
             ->where('is_active', true)
             ->with('goalType')
             ->get()
