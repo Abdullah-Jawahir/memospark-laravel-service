@@ -128,14 +128,15 @@ class DeckController extends Controller
                 }
             } elseif ($m->type === 'exercise') {
                 // Handle both single exercise and array of exercises
-                if (isset($content['type']) && isset($content['instruction'])) {
+                if (isset($content['instruction']) && (isset($content['type']) || isset($content['exercise_type']))) {
                     // Single exercise format
                     $exercise_text = $this->getExerciseMainText($content);
                     $instruction = $this->getExerciseInstruction($content, $m->language ?? 'en');
+                    $exerciseType = $content['exercise_type'] ?? $content['type'] ?? 'exercise';
 
                     $response['exercises'][] = [
                         'id' => $m->id,  // Add StudyMaterial ID
-                        'type' => $content['type'],
+                        'type' => $exerciseType,
                         'instruction' => $instruction,
                         'exercise_text' => $exercise_text,
                         'answer' => $content['answer'] ?? '',
@@ -146,13 +147,14 @@ class DeckController extends Controller
                 } elseif (is_array($content)) {
                     // Array of exercises
                     foreach ($content as $ex) {
-                        if (isset($ex['type']) && isset($ex['instruction'])) {
+                        if (isset($ex['instruction']) && (isset($ex['type']) || isset($ex['exercise_type']))) {
                             $exercise_text = $this->getExerciseMainText($ex);
                             $instruction = $this->getExerciseInstruction($ex, $m->language ?? 'en');
+                            $exerciseType = $ex['exercise_type'] ?? $ex['type'] ?? 'exercise';
 
                             $response['exercises'][] = [
                                 'id' => $m->id,  // Add StudyMaterial ID
-                                'type' => $ex['type'],
+                                'type' => $exerciseType,
                                 'instruction' => $instruction,
                                 'exercise_text' => $exercise_text,
                                 'answer' => $ex['answer'] ?? '',
@@ -430,18 +432,25 @@ class DeckController extends Controller
 
     /**
      * Extract the instruction text from exercise content
-     * Returns generic instruction based on type if specific instruction not available
+     * Returns generic instruction based on exercise_type if specific instruction not available
      */
     private function getExerciseInstruction($content, $language = 'en')
     {
-        // If we have both question and instruction, use instruction as intended
-        if (isset($content['question']) && isset($content['instruction'])) {
-            return $content['instruction'];
+        // Get the exercise type - check both exercise_type and type fields
+        $exerciseType = $content['exercise_type'] ?? $content['type'] ?? 'default';
+        
+        // For exercises, we want to show the generic instruction based on exercise type
+        // rather than the user's custom instruction which becomes the exercise_text
+        if ($exerciseType !== 'exercise' && $exerciseType !== 'default') {
+            // Use localized generic instruction for specific exercise types
+            $genericInstruction = $this->getLocalizedInstruction($exerciseType, $language);
+            if ($genericInstruction) {
+                return $genericInstruction;
+            }
         }
-
-        // If only instruction exists, provide generic instruction based on type
-        $type = $content['type'] ?? 'exercise';
-        return $this->getLocalizedInstruction($type, $language) ?? $content['instruction'] ?? $this->getLocalizedInstruction('default', $language);
+        
+        // Fallback: use custom instruction if provided, otherwise default
+        return $content['instruction'] ?? $this->getLocalizedInstruction('default', $language);
     }
 
     /**
