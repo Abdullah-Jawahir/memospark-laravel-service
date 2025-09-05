@@ -171,20 +171,27 @@ class FlashcardController extends Controller
     $validationRules = [
       'answer' => 'required|string|max:2000',
       'difficulty' => 'sometimes|string|in:beginner,intermediate,advanced',
-      'type' => 'sometimes|string|in:flashcard,quiz,exercise,multiple_choice,true_false,fill_blank'
+      'type' => 'sometimes|string|in:flashcard,quiz,exercise'
     ];
 
     // Add specific field validation based on card type
-    if ($cardType === 'exercise') {
-      $validationRules['instruction'] = 'required|string|max:1000';
-    } else {
+    if ($cardType === 'flashcard') {
       $validationRules['question'] = 'required|string|max:1000';
-    }
-
-    // Add options validation for quiz types
-    if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
-      $validationRules['options'] = 'sometimes|array|max:6';
+    } elseif ($cardType === 'quiz') {
+      $validationRules['question'] = 'required|string|max:1000';
+      $validationRules['options'] = 'required|array|min:2|max:6';
       $validationRules['options.*'] = 'string|max:500';
+    } elseif ($cardType === 'exercise') {
+      $validationRules['exercise_type'] = 'sometimes|string|in:fill_blank,true_false,short_answer,matching';
+      $validationRules['instruction'] = 'required|string|max:1000';
+
+      $exerciseType = $request->input('exercise_type', 'fill_blank');
+      if ($exerciseType === 'matching') {
+        $validationRules['concepts'] = 'required|array|min:2|max:6';
+        $validationRules['concepts.*'] = 'string|max:500';
+        $validationRules['definitions'] = 'required|array|min:2|max:6';
+        $validationRules['definitions.*'] = 'string|max:500';
+      }
     }
 
     $request->validate($validationRules);
@@ -207,12 +214,19 @@ class FlashcardController extends Controller
       // Handle both single card format and array format
       if ((isset($content['question']) || isset($content['instruction'])) && $cardIndex == 0) {
         // Single card format - update directly
-        if ($cardType === 'exercise') {
-          // For exercises, store both question and instruction for consistency
-          $content['question'] = $request->input('instruction'); // The main question/text
-          $content['instruction'] = $this->getGenericInstruction($content['type'] ?? 'exercise', $studyMaterial->language ?? 'en'); // Generic instruction
-        } else {
+        if ($cardType === 'flashcard') {
           $content['question'] = $request->input('question');
+        } elseif ($cardType === 'quiz') {
+          $content['question'] = $request->input('question');
+          $content['options'] = $request->input('options');
+        } elseif ($cardType === 'exercise') {
+          $content['instruction'] = $request->input('instruction');
+          $content['exercise_type'] = $request->input('exercise_type', 'fill_blank');
+
+          if ($content['exercise_type'] === 'matching') {
+            $content['concepts'] = $request->input('concepts');
+            $content['definitions'] = $request->input('definitions');
+          }
         }
 
         $content['answer'] = $request->input('answer');
@@ -223,9 +237,6 @@ class FlashcardController extends Controller
         if ($request->has('type')) {
           $content['type'] = $request->input('type');
         }
-        if ($request->has('options')) {
-          $content['options'] = $request->input('options');
-        }
 
         $cardData = $content;
       } else {
@@ -234,12 +245,19 @@ class FlashcardController extends Controller
           return response()->json(['error' => 'Card not found'], 404);
         }
 
-        if ($cardType === 'exercise') {
-          // For exercises, store both question and instruction for consistency
-          $content[$cardIndex]['question'] = $request->input('instruction'); // The main question/text
-          $content[$cardIndex]['instruction'] = $this->getGenericInstruction($content[$cardIndex]['type'] ?? 'exercise', $studyMaterial->language ?? 'en'); // Generic instruction
-        } else {
+        if ($cardType === 'flashcard') {
           $content[$cardIndex]['question'] = $request->input('question');
+        } elseif ($cardType === 'quiz') {
+          $content[$cardIndex]['question'] = $request->input('question');
+          $content[$cardIndex]['options'] = $request->input('options');
+        } elseif ($cardType === 'exercise') {
+          $content[$cardIndex]['instruction'] = $request->input('instruction');
+          $content[$cardIndex]['exercise_type'] = $request->input('exercise_type', 'fill_blank');
+
+          if ($content[$cardIndex]['exercise_type'] === 'matching') {
+            $content[$cardIndex]['concepts'] = $request->input('concepts');
+            $content[$cardIndex]['definitions'] = $request->input('definitions');
+          }
         }
 
         $content[$cardIndex]['answer'] = $request->input('answer');
@@ -249,9 +267,6 @@ class FlashcardController extends Controller
         }
         if ($request->has('type')) {
           $content[$cardIndex]['type'] = $request->input('type');
-        }
-        if ($request->has('options')) {
-          $content[$cardIndex]['options'] = $request->input('options');
         }
 
         $cardData = $content[$cardIndex];
@@ -350,20 +365,27 @@ class FlashcardController extends Controller
     $validationRules = [
       'answer' => 'required|string|max:2000',
       'difficulty' => 'sometimes|string|in:beginner,intermediate,advanced',
-      'type' => 'sometimes|string|in:flashcard,quiz,exercise,multiple_choice,true_false,fill_blank'
+      'type' => 'sometimes|string|in:flashcard,quiz,exercise'
     ];
 
     // Add specific field validation based on card type
-    if ($cardType === 'exercise') {
-      $validationRules['instruction'] = 'required|string|max:1000';
-    } else {
+    if ($cardType === 'flashcard') {
       $validationRules['question'] = 'required|string|max:1000';
-    }
-
-    // Add options validation for quiz types
-    if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
-      $validationRules['options'] = 'sometimes|array|max:6';
+    } elseif ($cardType === 'quiz') {
+      $validationRules['question'] = 'required|string|max:1000';
+      $validationRules['options'] = 'required|array|min:2|max:6';
       $validationRules['options.*'] = 'string|max:500';
+    } elseif ($cardType === 'exercise') {
+      $validationRules['exercise_type'] = 'sometimes|string|in:fill_blank,true_false,short_answer,matching';
+      $validationRules['instruction'] = 'required|string|max:1000';
+
+      $exerciseType = $request->input('exercise_type', 'fill_blank');
+      if ($exerciseType === 'matching') {
+        $validationRules['concepts'] = 'required|array|min:2|max:6';
+        $validationRules['concepts.*'] = 'string|max:500';
+        $validationRules['definitions'] = 'required|array|min:2|max:6';
+        $validationRules['definitions.*'] = 'string|max:500';
+      }
     }
 
     $request->validate($validationRules);
@@ -383,23 +405,25 @@ class FlashcardController extends Controller
 
       // Create new card content based on type
       $newCardContent = [
-        'type' => $cardType === 'flashcard' ? 'Q&A' : $cardType,
         'answer' => $request->input('answer'),
-        'difficulty' => $request->input('difficulty', 'intermediate')
+        'difficulty' => $request->input('difficulty', 'intermediate'),
+        'type' => $request->input('type', 'flashcard')
       ];
 
       // Add type-specific fields
-      if ($cardType === 'exercise') {
-        // For exercises, store both question and instruction for consistency
-        $newCardContent['question'] = $request->input('instruction'); // The main question/text
-        $newCardContent['instruction'] = $this->getGenericInstruction($cardType, $studyMaterial->language ?? 'en'); // Generic instruction based on type
-      } else {
+      if ($cardType === 'flashcard') {
         $newCardContent['question'] = $request->input('question');
-      }
+      } elseif ($cardType === 'quiz') {
+        $newCardContent['question'] = $request->input('question');
+        $newCardContent['options'] = $request->input('options');
+      } elseif ($cardType === 'exercise') {
+        $newCardContent['instruction'] = $request->input('instruction');
+        $newCardContent['exercise_type'] = $request->input('exercise_type', 'fill_blank');
 
-      // Add options for quiz types
-      if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
-        $newCardContent['options'] = $request->input('options', []);
+        if ($newCardContent['exercise_type'] === 'matching') {
+          $newCardContent['concepts'] = $request->input('concepts');
+          $newCardContent['definitions'] = $request->input('definitions');
+        }
       }
 
       // Create new StudyMaterial record
@@ -418,7 +442,10 @@ class FlashcardController extends Controller
           'answer' => $newCardContent['answer'],
           'difficulty' => $newCardContent['difficulty'],
           'options' => $newCardContent['options'] ?? null,
-          'type' => $newStudyMaterial->type
+          'concepts' => $newCardContent['concepts'] ?? null,
+          'definitions' => $newCardContent['definitions'] ?? null,
+          'exercise_type' => $newCardContent['exercise_type'] ?? null,
+          'type' => $newCardContent['type']
         ],
         'message' => ucfirst($cardType) . ' added successfully'
       ]);
