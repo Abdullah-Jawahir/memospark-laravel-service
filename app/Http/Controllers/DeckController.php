@@ -134,7 +134,7 @@ class DeckController extends Controller
                         'id' => $m->id,  // Add StudyMaterial ID
                         'type' => $content['type'],
                         'instruction' => $content['instruction'],
-                        'exercise_text' => $content['exercise_text'] ?? null,
+                        'exercise_text' => $content['question'] ?? $content['exercise_text'] ?? null,
                         'answer' => $content['answer'] ?? '',
                         'difficulty' => $content['difficulty'] ?? 'medium',
                         'concepts' => $content['concepts'] ?? null,
@@ -148,7 +148,7 @@ class DeckController extends Controller
                                 'id' => $m->id,  // Add StudyMaterial ID
                                 'type' => $ex['type'],
                                 'instruction' => $ex['instruction'],
-                                'exercise_text' => $ex['exercise_text'] ?? null,
+                                'exercise_text' => $ex['question'] ?? $ex['exercise_text'] ?? null,
                                 'answer' => $ex['answer'] ?? '',
                                 'difficulty' => $ex['difficulty'] ?? 'medium',
                                 'concepts' => $ex['concepts'] ?? null,
