@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use App\Models\FileProcessCache;
 use App\Models\StudyMaterial;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FlashcardController extends Controller
 {
@@ -221,6 +222,8 @@ class FlashcardController extends Controller
           $content['options'] = $request->input('options');
         } elseif ($cardType === 'exercise') {
           $content['instruction'] = $request->input('instruction');
+          $content['exercise_text'] = $request->input('exercise_text'); // Add exercise_text handling
+          $content['question'] = $request->input('exercise_text'); // Also update question field for consistency
           $content['exercise_type'] = $request->input('exercise_type', 'fill_blank');
 
           if ($content['exercise_type'] === 'matching') {
@@ -252,6 +255,8 @@ class FlashcardController extends Controller
           $content[$cardIndex]['options'] = $request->input('options');
         } elseif ($cardType === 'exercise') {
           $content[$cardIndex]['instruction'] = $request->input('instruction');
+          $content[$cardIndex]['exercise_text'] = $request->input('exercise_text'); // Add exercise_text handling
+          $content[$cardIndex]['question'] = $request->input('exercise_text'); // Also update question field for consistency
           $content[$cardIndex]['exercise_type'] = $request->input('exercise_type', 'fill_blank');
 
           if ($content[$cardIndex]['exercise_type'] === 'matching') {
@@ -273,7 +278,13 @@ class FlashcardController extends Controller
       }
 
       $studyMaterial->content = $content;
+      Log::info("Before save - StudyMaterial ID: {$studyMaterial->id}, Content: " . json_encode($content));
       $studyMaterial->save();
+      Log::info("After save - StudyMaterial ID: {$studyMaterial->id}");
+
+      // Reload from database to verify save
+      $reloaded = StudyMaterial::find($studyMaterial->id);
+      Log::info("Reloaded content: " . json_encode($reloaded->content));
 
       return response()->json([
         'success' => true,
