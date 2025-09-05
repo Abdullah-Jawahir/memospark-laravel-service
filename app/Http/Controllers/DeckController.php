@@ -130,11 +130,14 @@ class DeckController extends Controller
                 // Handle both single exercise and array of exercises
                 if (isset($content['type']) && isset($content['instruction'])) {
                     // Single exercise format
+                    $exercise_text = $this->getExerciseMainText($content);
+                    $instruction = $this->getExerciseInstruction($content);
+
                     $response['exercises'][] = [
                         'id' => $m->id,  // Add StudyMaterial ID
                         'type' => $content['type'],
-                        'instruction' => $content['instruction'],
-                        'exercise_text' => $content['question'] ?? $content['exercise_text'] ?? null,
+                        'instruction' => $instruction,
+                        'exercise_text' => $exercise_text,
                         'answer' => $content['answer'] ?? '',
                         'difficulty' => $content['difficulty'] ?? 'medium',
                         'concepts' => $content['concepts'] ?? null,
@@ -144,11 +147,14 @@ class DeckController extends Controller
                     // Array of exercises
                     foreach ($content as $ex) {
                         if (isset($ex['type']) && isset($ex['instruction'])) {
+                            $exercise_text = $this->getExerciseMainText($ex);
+                            $instruction = $this->getExerciseInstruction($ex);
+
                             $response['exercises'][] = [
                                 'id' => $m->id,  // Add StudyMaterial ID
                                 'type' => $ex['type'],
-                                'instruction' => $ex['instruction'],
-                                'exercise_text' => $ex['question'] ?? $ex['exercise_text'] ?? null,
+                                'instruction' => $instruction,
+                                'exercise_text' => $exercise_text,
                                 'answer' => $ex['answer'] ?? '',
                                 'difficulty' => $ex['difficulty'] ?? 'medium',
                                 'concepts' => $ex['concepts'] ?? null,
@@ -395,6 +401,57 @@ class DeckController extends Controller
                 'success' => false,
                 'error' => 'Failed to update deck: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Extract the main question text from exercise content
+     * Handles both old format (instruction only) and new format (question + instruction)
+     */
+    private function getExerciseMainText($content)
+    {
+        // Priority 1: If 'question' field exists, use it (new format)
+        if (isset($content['question']) && !empty(trim($content['question']))) {
+            return $content['question'];
+        }
+
+        // Priority 2: If 'exercise_text' field exists, use it
+        if (isset($content['exercise_text']) && !empty(trim($content['exercise_text']))) {
+            return $content['exercise_text'];
+        }
+
+        // Priority 3: Fall back to 'instruction' field (old format)
+        if (isset($content['instruction']) && !empty(trim($content['instruction']))) {
+            return $content['instruction'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract the instruction text from exercise content
+     * Returns generic instruction based on type if specific instruction not available
+     */
+    private function getExerciseInstruction($content)
+    {
+        // If we have both question and instruction, use instruction as intended
+        if (isset($content['question']) && isset($content['instruction'])) {
+            return $content['instruction'];
+        }
+
+        // If only instruction exists, provide generic instruction based on type
+        $type = $content['type'] ?? 'exercise';
+        switch ($type) {
+            case 'fill_blank':
+                return 'Fill in the blank.';
+            case 'true_false':
+                return 'Determine if the statement is true or false.';
+            case 'short_answer':
+                return 'Answer in 2-3 sentences.';
+            case 'matching':
+                return 'Match the concepts with their definitions.';
+            default:
+                return $content['instruction'] ?? 'Complete the exercise.';
         }
     }
 }
