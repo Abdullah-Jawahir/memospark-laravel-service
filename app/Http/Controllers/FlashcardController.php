@@ -208,7 +208,9 @@ class FlashcardController extends Controller
       if ((isset($content['question']) || isset($content['instruction'])) && $cardIndex == 0) {
         // Single card format - update directly
         if ($cardType === 'exercise') {
-          $content['instruction'] = $request->input('instruction');
+          // For exercises, store both question and instruction for consistency
+          $content['question'] = $request->input('instruction'); // The main question/text
+          $content['instruction'] = $this->getGenericInstruction($content['type'] ?? 'exercise'); // Generic instruction
         } else {
           $content['question'] = $request->input('question');
         }
@@ -233,7 +235,9 @@ class FlashcardController extends Controller
         }
 
         if ($cardType === 'exercise') {
-          $content[$cardIndex]['instruction'] = $request->input('instruction');
+          // For exercises, store both question and instruction for consistency
+          $content[$cardIndex]['question'] = $request->input('instruction'); // The main question/text
+          $content[$cardIndex]['instruction'] = $this->getGenericInstruction($content[$cardIndex]['type'] ?? 'exercise'); // Generic instruction
         } else {
           $content[$cardIndex]['question'] = $request->input('question');
         }
@@ -386,7 +390,9 @@ class FlashcardController extends Controller
 
       // Add type-specific fields
       if ($cardType === 'exercise') {
-        $newCardContent['instruction'] = $request->input('instruction');
+        // For exercises, store both question and instruction for consistency
+        $newCardContent['question'] = $request->input('instruction'); // The main question/text
+        $newCardContent['instruction'] = $this->getGenericInstruction($cardType); // Generic instruction based on type
       } else {
         $newCardContent['question'] = $request->input('question');
       }
@@ -457,6 +463,25 @@ class FlashcardController extends Controller
         'success' => false,
         'error' => 'Failed to get flashcards: ' . $e->getMessage()
       ], 500);
+    }
+  }
+
+  /**
+   * Get generic instruction based on exercise type
+   */
+  private function getGenericInstruction($type)
+  {
+    switch ($type) {
+      case 'fill_blank':
+        return 'Fill in the blank.';
+      case 'true_false':
+        return 'Determine if the statement is true or false.';
+      case 'short_answer':
+        return 'Answer in 2-3 sentences.';
+      case 'matching':
+        return 'Match the concepts with their definitions.';
+      default:
+        return 'Complete the exercise.';
     }
   }
 }
