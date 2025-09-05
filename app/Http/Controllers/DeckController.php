@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Deck;
+use Illuminate\Http\Request;
 use App\Models\StudyMaterial;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class DeckController extends Controller
 {
@@ -100,6 +102,7 @@ class DeckController extends Controller
                 if (isset($content['question']) && isset($content['options'])) {
                     // Single quiz format
                     $response['quizzes'][] = [
+                        'id' => $m->id,  // Add StudyMaterial ID
                         'type' => 'quiz',
                         'question' => $content['question'],
                         'options' => $content['options'],
@@ -112,6 +115,7 @@ class DeckController extends Controller
                     foreach ($content as $qz) {
                         if (isset($qz['question']) && isset($qz['options'])) {
                             $response['quizzes'][] = [
+                                'id' => $m->id,  // Add StudyMaterial ID
                                 'type' => 'quiz',
                                 'question' => $qz['question'],
                                 'options' => $qz['options'],
@@ -124,12 +128,17 @@ class DeckController extends Controller
                 }
             } elseif ($m->type === 'exercise') {
                 // Handle both single exercise and array of exercises
-                if (isset($content['type']) && isset($content['instruction'])) {
+                if (isset($content['instruction']) && (isset($content['type']) || isset($content['exercise_type']))) {
                     // Single exercise format
+                    $exercise_text = $this->getExerciseMainText($content);
+                    $instruction = $this->getExerciseInstruction($content, $m->language ?? 'en');
+                    $exerciseType = $content['exercise_type'] ?? $content['type'] ?? 'exercise';
+
                     $response['exercises'][] = [
-                        'type' => $content['type'],
-                        'instruction' => $content['instruction'],
-                        'exercise_text' => $content['exercise_text'] ?? null,
+                        'id' => $m->id,  // Add StudyMaterial ID
+                        'type' => $exerciseType,
+                        'instruction' => $instruction,
+                        'exercise_text' => $exercise_text,
                         'answer' => $content['answer'] ?? '',
                         'difficulty' => $content['difficulty'] ?? 'medium',
                         'concepts' => $content['concepts'] ?? null,
@@ -138,11 +147,16 @@ class DeckController extends Controller
                 } elseif (is_array($content)) {
                     // Array of exercises
                     foreach ($content as $ex) {
-                        if (isset($ex['type']) && isset($ex['instruction'])) {
+                        if (isset($ex['instruction']) && (isset($ex['type']) || isset($ex['exercise_type']))) {
+                            $exercise_text = $this->getExerciseMainText($ex);
+                            $instruction = $this->getExerciseInstruction($ex, $m->language ?? 'en');
+                            $exerciseType = $ex['exercise_type'] ?? $ex['type'] ?? 'exercise';
+
                             $response['exercises'][] = [
-                                'type' => $ex['type'],
-                                'instruction' => $ex['instruction'],
-                                'exercise_text' => $ex['exercise_text'] ?? null,
+                                'id' => $m->id,  // Add StudyMaterial ID
+                                'type' => $exerciseType,
+                                'instruction' => $instruction,
+                                'exercise_text' => $exercise_text,
                                 'answer' => $ex['answer'] ?? '',
                                 'difficulty' => $ex['difficulty'] ?? 'medium',
                                 'concepts' => $ex['concepts'] ?? null,
@@ -163,6 +177,17 @@ class DeckController extends Controller
             'total_quizzes' => count($response['quizzes']),
             'total_exercises' => count($response['exercises']),
         ];
+
+        // Also include the raw materials for frontend to use when adding new cards
+        $response['materials'] = $materials->map(function ($material) {
+            return [
+                'id' => $material->id,
+                'type' => $material->type,
+                'title' => ucfirst($material->type) . ' Material',
+                'content_count' => is_array($material->content) ? count($material->content) : 1,
+                'document_id' => $material->document_id
+            ];
+        });
 
         return response()->json($response);
     }
@@ -204,6 +229,8 @@ class DeckController extends Controller
                 ->unique()
                 ->toArray();
 
+            Log::info($existingTypes);
+
             $missingTypes = array_diff($requestedTypes, $existingTypes);
 
             if (!empty($missingTypes)) {
@@ -237,5 +264,224 @@ class DeckController extends Controller
                 'status' => 'complete'
             ]);
         }
+    }
+
+    /**
+     * Get a specific deck with its details
+     *
+     * @param Request $request
+     * @param int $deckId
+     * @return JsonResponse
+     */
+    public function show(Request $request, $deckId)
+    {
+        $supabaseUser = $request->get('supabase_user');
+        if (!$supabaseUser || !isset($supabaseUser['id'])) {
+            return response()->json(['error' => 'Supabase user not found'], 401);
+        }
+
+        // Ensure deck belongs to user
+        $deck = Deck::where('id', $deckId)->where('user_id', $supabaseUser['id'])->first();
+        if (!$deck) {
+            return response()->json(['error' => 'Deck not found or access denied'], 404);
+        }
+
+        // Get deck with materials count
+        $deckWithCounts = Deck::where('id', $deckId)
+            ->with(['studyMaterials'])
+            ->first();
+
+        $totalCards = 0;
+        $materialTypes = [];
+        $flashcardCount = 0;
+        $quizCount = 0;
+        $exerciseCount = 0;
+
+        foreach ($deckWithCounts->studyMaterials as $material) {
+            $content = $material->content ?? [];
+            $materialTypes[] = $material->type;
+
+            if ($material->type === 'flashcard') {
+                // Handle both single flashcard and array of flashcards
+                if (isset($content['question']) && isset($content['answer'])) {
+                    // Single flashcard format
+                    $flashcardCount++;
+                } elseif (is_array($content)) {
+                    // Array of flashcards
+                    foreach ($content as $card) {
+                        if (isset($card['question']) && isset($card['answer'])) {
+                            $flashcardCount++;
+                        }
+                    }
+                }
+            } elseif ($material->type === 'quiz') {
+                // Handle both single quiz and array of quizzes
+                if (isset($content['question']) && isset($content['options'])) {
+                    // Single quiz format
+                    $quizCount++;
+                } elseif (is_array($content)) {
+                    // Array of quizzes
+                    foreach ($content as $quiz) {
+                        if (isset($quiz['question']) && isset($quiz['options'])) {
+                            $quizCount++;
+                        }
+                    }
+                }
+            } elseif ($material->type === 'exercise') {
+                // Handle both single exercise and array of exercises
+                if (isset($content['type']) && isset($content['instruction'])) {
+                    // Single exercise format
+                    $exerciseCount++;
+                } elseif (is_array($content)) {
+                    // Array of exercises
+                    foreach ($content as $exercise) {
+                        if (isset($exercise['type']) && isset($exercise['instruction'])) {
+                            $exerciseCount++;
+                        }
+                    }
+                }
+            }
+        }
+
+        $totalCards = $flashcardCount + $quizCount + $exerciseCount;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $deck->id,
+                'name' => $deck->name,
+                'card_count' => $totalCards,
+                'flashcard_count' => $flashcardCount,
+                'quiz_count' => $quizCount,
+                'exercise_count' => $exerciseCount,
+                'material_types' => array_unique($materialTypes),
+                'created_at' => $deck->created_at,
+                'updated_at' => $deck->updated_at
+            ]
+        ]);
+    }
+
+    /**
+     * Update deck details (e.g., name)
+     *
+     * @param Request $request
+     * @param int $deckId
+     * @return JsonResponse
+     */
+    public function update(Request $request, $deckId)
+    {
+        $supabaseUser = $request->get('supabase_user');
+        if (!$supabaseUser || !isset($supabaseUser['id'])) {
+            return response()->json(['error' => 'Supabase user not found'], 401);
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        // Ensure deck belongs to user
+        $deck = Deck::where('id', $deckId)->where('user_id', $supabaseUser['id'])->first();
+        if (!$deck) {
+            return response()->json(['error' => 'Deck not found or access denied'], 404);
+        }
+
+        try {
+            $deck->name = $request->input('name');
+            $deck->save();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $deck->id,
+                    'name' => $deck->name,
+                    'updated_at' => $deck->updated_at
+                ],
+                'message' => 'Deck updated successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to update deck: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Extract the main question text from exercise content
+     * Handles both old format (instruction only) and new format (question + instruction)
+     */
+    private function getExerciseMainText($content)
+    {
+        // Priority 1: If 'question' field exists, use it (new format)
+        if (isset($content['question']) && !empty(trim($content['question']))) {
+            return $content['question'];
+        }
+
+        // Priority 2: If 'exercise_text' field exists, use it
+        if (isset($content['exercise_text']) && !empty(trim($content['exercise_text']))) {
+            return $content['exercise_text'];
+        }
+
+        // Priority 3: Fall back to 'instruction' field (old format)
+        if (isset($content['instruction']) && !empty(trim($content['instruction']))) {
+            return $content['instruction'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract the instruction text from exercise content
+     * Returns generic instruction based on exercise_type if specific instruction not available
+     */
+    private function getExerciseInstruction($content, $language = 'en')
+    {
+        // Get the exercise type - check both exercise_type and type fields
+        $exerciseType = $content['exercise_type'] ?? $content['type'] ?? 'default';
+        
+        // For exercises, we want to show the generic instruction based on exercise type
+        // rather than the user's custom instruction which becomes the exercise_text
+        if ($exerciseType !== 'exercise' && $exerciseType !== 'default') {
+            // Use localized generic instruction for specific exercise types
+            $genericInstruction = $this->getLocalizedInstruction($exerciseType, $language);
+            if ($genericInstruction) {
+                return $genericInstruction;
+            }
+        }
+        
+        // Fallback: use custom instruction if provided, otherwise default
+        return $content['instruction'] ?? $this->getLocalizedInstruction('default', $language);
+    }
+
+    /**
+     * Get localized instruction based on type and language
+     */
+    private function getLocalizedInstruction($type, $language = 'en')
+    {
+        $instructions = [
+            'en' => [
+                'fill_blank' => 'Fill in the blank.',
+                'true_false' => 'Determine if the statement is true or false.',
+                'short_answer' => 'Answer in 2-3 sentences.',
+                'matching' => 'Match the concepts with their definitions.',
+                'default' => 'Complete the exercise.'
+            ],
+            'si' => [
+                'fill_blank' => 'හිස් තැන පුරවන්න.',
+                'true_false' => 'ප්‍රකාශය සත්‍ය හෝ අසත්‍ය දැයි තීරණය කරන්න.',
+                'short_answer' => 'වාක්‍ය 2-3 කින් පිළිතුරු දෙන්න.',
+                'matching' => 'සංකල්ප ඒවායේ අර්ථ දැක්වීම් සමඟ ගැලපීම.',
+                'default' => 'අභ්‍යාසය සම්පූර්ණ කරන්න.'
+            ],
+            'ta' => [
+                'fill_blank' => 'வெற்று இடத்தை நிரப்பவும்.',
+                'true_false' => 'கூற்று உண்மை அல்லது பொய் என்பதை தீர்மானிக்கவும்.',
+                'short_answer' => '2-3 வாக்கியங்களில் பதிலளிக்கவும்.',
+                'matching' => 'கருத்துகளை அவற்றின் வரையறைகளுடன் பொருத்தவும்.',
+                'default' => 'பயிற்சியை முடிக்கவும்.'
+            ]
+        ];
+
+        return $instructions[$language][$type] ?? $instructions['en'][$type] ?? null;
     }
 }
