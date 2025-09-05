@@ -196,8 +196,14 @@ The MemoSpark Laravel Service serves as the backbone for data management, user a
    DB_USERNAME=your_username
    DB_PASSWORD=your_password
 
+   QUEUE_CONNECTION=database
+   CACHE_STORE=database
+
    FASTAPI_URL=http://localhost:8001
-   FRONTEND_URL=http://localhost:8080
+
+   SUPABASE_URL=Your-supabase-url-here
+   SUPABASE_KEY=Your-supabase-key
+   SUPABASE_SERVICE_ROLE_KEY
    ```
 
 6. **Database setup**
