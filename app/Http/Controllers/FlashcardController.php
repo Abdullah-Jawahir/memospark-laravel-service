@@ -183,7 +183,7 @@ class FlashcardController extends Controller
 
     // Add options validation for quiz types
     if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
-      $validationRules['options'] = 'sometimes|array|min:2|max:6';
+      $validationRules['options'] = 'sometimes|array|max:6';
       $validationRules['options.*'] = 'string|max:500';
     }
 
@@ -358,7 +358,7 @@ class FlashcardController extends Controller
 
     // Add options validation for quiz types
     if ($cardType === 'quiz' || $cardType === 'multiple_choice') {
-      $validationRules['options'] = 'sometimes|array|min:2|max:6';
+      $validationRules['options'] = 'sometimes|array|max:6';
       $validationRules['options.*'] = 'string|max:500';
     }
 
