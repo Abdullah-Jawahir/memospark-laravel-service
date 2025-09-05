@@ -134,16 +134,27 @@ class DeckController extends Controller
                     $instruction = $this->getExerciseInstruction($content, $m->language ?? 'en');
                     $exerciseType = $content['exercise_type'] ?? $content['type'] ?? 'exercise';
 
-                    $response['exercises'][] = [
+                    $exerciseData = [
                         'id' => $m->id,  // Add StudyMaterial ID
                         'type' => $exerciseType,
                         'instruction' => $instruction,
-                        'exercise_text' => $exercise_text,
                         'answer' => $content['answer'] ?? '',
                         'difficulty' => $content['difficulty'] ?? 'medium',
                         'concepts' => $content['concepts'] ?? null,
                         'definitions' => $content['definitions'] ?? null,
                     ];
+
+                    // For multiple choice exercises, extract question and options
+                    if ($exerciseType === 'multiple_choice' && $exercise_text) {
+                        $processedData = $this->processMultipleChoiceExercise($exercise_text);
+                        $exerciseData['question'] = $processedData['question'];
+                        $exerciseData['options'] = $processedData['options'];
+                        // Don't include exercise_text for multiple choice since we have structured question/options
+                    } else {
+                        $exerciseData['question'] = $exercise_text;
+                    }
+
+                    $response['exercises'][] = $exerciseData;
                 } elseif (is_array($content)) {
                     // Array of exercises
                     foreach ($content as $ex) {
@@ -152,16 +163,29 @@ class DeckController extends Controller
                             $instruction = $this->getExerciseInstruction($ex, $m->language ?? 'en');
                             $exerciseType = $ex['exercise_type'] ?? $ex['type'] ?? 'exercise';
 
-                            $response['exercises'][] = [
+                            $exerciseData = [
                                 'id' => $m->id,  // Add StudyMaterial ID
                                 'type' => $exerciseType,
                                 'instruction' => $instruction,
-                                'exercise_text' => $exercise_text,
                                 'answer' => $ex['answer'] ?? '',
                                 'difficulty' => $ex['difficulty'] ?? 'medium',
                                 'concepts' => $ex['concepts'] ?? null,
                                 'definitions' => $ex['definitions'] ?? null,
                             ];
+
+                            // For multiple choice exercises, extract question and options
+                            if ($exerciseType === 'multiple_choice' && $exercise_text) {
+                                $processedData = $this->processMultipleChoiceExercise($exercise_text);
+                                $exerciseData['question'] = $processedData['question'];
+                                $exerciseData['options'] = $processedData['options'];
+                                // Don't include exercise_text for multiple choice since we have structured question/options
+                            } else {
+                                // For other exercise types, include exercise_text and set question
+                                $exerciseData['exercise_text'] = $exercise_text;
+                                $exerciseData['question'] = $exercise_text;
+                            }
+
+                            $response['exercises'][] = $exerciseData;
                         }
                     }
                 }
@@ -438,7 +462,7 @@ class DeckController extends Controller
     {
         // Get the exercise type - check both exercise_type and type fields
         $exerciseType = $content['exercise_type'] ?? $content['type'] ?? 'default';
-        
+
         // For exercises, we want to show the generic instruction based on exercise type
         // rather than the user's custom instruction which becomes the exercise_text
         if ($exerciseType !== 'exercise' && $exerciseType !== 'default') {
@@ -448,7 +472,7 @@ class DeckController extends Controller
                 return $genericInstruction;
             }
         }
-        
+
         // Fallback: use custom instruction if provided, otherwise default
         return $content['instruction'] ?? $this->getLocalizedInstruction('default', $language);
     }
@@ -483,5 +507,56 @@ class DeckController extends Controller
         ];
 
         return $instructions[$language][$type] ?? $instructions['en'][$type] ?? null;
+    }
+
+    /**
+     * Process multiple choice exercise text and extract question and options
+     * Input: "Which of these is NOT a greenhouse gas? a) Carbon dioxide b) Oxygen c) Methane d) Nitrous oxide."
+     * Output: ['question' => 'Which of these is NOT a greenhouse gas?', 'options' => ['Carbon dioxide', 'Oxygen', 'Methane', 'Nitrous oxide']]
+     */
+    private function processMultipleChoiceExercise($exerciseText)
+    {
+        // Look for pattern like "a) Option1 b) Option2 c) Option3 d) Option4"
+        preg_match_all('/[a-z]\)\s*([^a-z)]+?)(?=\s*[a-z]\)|$)/i', $exerciseText, $matches);
+
+        $options = [];
+        if (!empty($matches[1])) {
+            foreach ($matches[1] as $option) {
+                $options[] = trim($option);
+            }
+        }
+
+        // If the complex regex didn't work, try a simpler approach
+        if (empty($options)) {
+            // Split by options pattern and clean up
+            $parts = preg_split('/\s*[a-z]\)\s*/i', $exerciseText);
+            if (count($parts) > 1) {
+                // First part is the question
+                $question = trim($parts[0]);
+                // Remaining parts are options
+                for ($i = 1; $i < count($parts); $i++) {
+                    if (!empty(trim($parts[$i]))) {
+                        // Clean up option text (remove trailing punctuation)
+                        $option = trim($parts[$i]);
+                        $option = rtrim($option, '.,;!?');
+                        $options[] = $option;
+                    }
+                }
+            }
+        } else {
+            // Extract the question part (everything before the first option)
+            $questionPart = preg_split('/\s*[a-z]\)/i', $exerciseText)[0];
+            $question = trim($questionPart);
+        }
+
+        // Fallback: if we still don't have a question, use the original text
+        if (!isset($question) || empty($question)) {
+            $question = $exerciseText;
+        }
+
+        return [
+            'question' => $question,
+            'options' => $options
+        ];
     }
 }
