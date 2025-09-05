@@ -131,7 +131,7 @@ class DeckController extends Controller
                 if (isset($content['type']) && isset($content['instruction'])) {
                     // Single exercise format
                     $exercise_text = $this->getExerciseMainText($content);
-                    $instruction = $this->getExerciseInstruction($content);
+                    $instruction = $this->getExerciseInstruction($content, $m->language ?? 'en');
 
                     $response['exercises'][] = [
                         'id' => $m->id,  // Add StudyMaterial ID
@@ -148,7 +148,7 @@ class DeckController extends Controller
                     foreach ($content as $ex) {
                         if (isset($ex['type']) && isset($ex['instruction'])) {
                             $exercise_text = $this->getExerciseMainText($ex);
-                            $instruction = $this->getExerciseInstruction($ex);
+                            $instruction = $this->getExerciseInstruction($ex, $m->language ?? 'en');
 
                             $response['exercises'][] = [
                                 'id' => $m->id,  // Add StudyMaterial ID
@@ -432,7 +432,7 @@ class DeckController extends Controller
      * Extract the instruction text from exercise content
      * Returns generic instruction based on type if specific instruction not available
      */
-    private function getExerciseInstruction($content)
+    private function getExerciseInstruction($content, $language = 'en')
     {
         // If we have both question and instruction, use instruction as intended
         if (isset($content['question']) && isset($content['instruction'])) {
@@ -441,17 +441,38 @@ class DeckController extends Controller
 
         // If only instruction exists, provide generic instruction based on type
         $type = $content['type'] ?? 'exercise';
-        switch ($type) {
-            case 'fill_blank':
-                return 'Fill in the blank.';
-            case 'true_false':
-                return 'Determine if the statement is true or false.';
-            case 'short_answer':
-                return 'Answer in 2-3 sentences.';
-            case 'matching':
-                return 'Match the concepts with their definitions.';
-            default:
-                return $content['instruction'] ?? 'Complete the exercise.';
-        }
+        return $this->getLocalizedInstruction($type, $language) ?? $content['instruction'] ?? $this->getLocalizedInstruction('default', $language);
+    }
+
+    /**
+     * Get localized instruction based on type and language
+     */
+    private function getLocalizedInstruction($type, $language = 'en')
+    {
+        $instructions = [
+            'en' => [
+                'fill_blank' => 'Fill in the blank.',
+                'true_false' => 'Determine if the statement is true or false.',
+                'short_answer' => 'Answer in 2-3 sentences.',
+                'matching' => 'Match the concepts with their definitions.',
+                'default' => 'Complete the exercise.'
+            ],
+            'si' => [
+                'fill_blank' => 'හිස් තැන පුරවන්න.',
+                'true_false' => 'ප්‍රකාශය සත්‍ය හෝ අසත්‍ය දැයි තීරණය කරන්න.',
+                'short_answer' => 'වාක්‍ය 2-3 කින් පිළිතුරු දෙන්න.',
+                'matching' => 'සංකල්ප ඒවායේ අර්ථ දැක්වීම් සමඟ ගැලපීම.',
+                'default' => 'අභ්‍යාසය සම්පූර්ණ කරන්න.'
+            ],
+            'ta' => [
+                'fill_blank' => 'வெற்று இடத்தை நிரப்பவும்.',
+                'true_false' => 'கூற்று உண்மை அல்லது பொய் என்பதை தீர்மானிக்கவும்.',
+                'short_answer' => '2-3 வாக்கியங்களில் பதிலளிக்கவும்.',
+                'matching' => 'கருத்துகளை அவற்றின் வரையறைகளுடன் பொருத்தவும்.',
+                'default' => 'பயிற்சியை முடிக்கவும்.'
+            ]
+        ];
+
+        return $instructions[$language][$type] ?? $instructions['en'][$type] ?? null;
     }
 }
