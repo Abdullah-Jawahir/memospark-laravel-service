@@ -91,11 +91,6 @@ class DashboardController extends Controller
         $activityTimingStudyTime = StudyActivityTiming::where('user_id', $userId)
             ->sum('duration_seconds');
 
-        // Debug logging
-        Log::info('Dashboard Overview - User ID: ' . $userId);
-        Log::info('Dashboard Overview - Activity Timing Study Time: ' . $activityTimingStudyTime);
-        Log::info('Dashboard Overview - Activity Timing Count: ' . StudyActivityTiming::where('user_id', $userId)->count());
-
         // Fallback: Old method for backward compatibility (if no timing data exists) - ALL TIME
         $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
             ->sum('study_time');
@@ -103,18 +98,12 @@ class DashboardController extends Controller
         $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
             ->sum('study_time');
 
-        Log::info('Dashboard Overview - Regular Study Time: ' . $regularStudyTime);
-        Log::info('Dashboard Overview - Search Study Time: ' . $searchStudyTime);
-
         // Use timing tables if available, otherwise fallback to review-based timing
         $studyTimeSeconds = $activityTimingStudyTime > 0 ? $activityTimingStudyTime : ($regularStudyTime + $searchStudyTime);
         $studyTimeMinutes = intval($studyTimeSeconds / 60);
         $hours = intdiv($studyTimeMinutes, 60);
         $minutes = $studyTimeMinutes % 60;
         $studyTime = ($hours ? $hours . 'h ' : '') . $minutes . 'm';
-
-        Log::info('Dashboard Overview - Final Study Time Seconds: ' . $studyTimeSeconds);
-        Log::info('Dashboard Overview - Final Study Time Display: ' . $studyTime);
 
         return response()->json([
             'cards_studied_today' => $cardsStudiedToday,
@@ -167,8 +156,6 @@ class DashboardController extends Controller
                 ->where('user_id', $localUserId)
                 ->sortByDesc('reviewed_at')
                 ->first()?->reviewed_at;
-
-            Log::info($lastStudied);
 
             // Format last studied time
             $lastStudiedText = 'Never studied';
@@ -453,11 +440,6 @@ class DashboardController extends Controller
         // Get study time from activity timings using user_id - ALL TIME
         $activityTimingStudyTime = StudyActivityTiming::where('user_id', $userId)
             ->sum('duration_seconds');
-
-        // Debug logging
-        Log::info('Dashboard Main - User ID: ' . $userId);
-        Log::info('Dashboard Main - Activity Timing Study Time: ' . $activityTimingStudyTime);
-        Log::info('Dashboard Main - Activity Timing Count: ' . StudyActivityTiming::where('user_id', $userId)->count());
 
         // Fallback to review-based timing if no timing data exists - ALL TIME
         if ($activityTimingStudyTime == 0) {
