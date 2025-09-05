@@ -210,7 +210,7 @@ class FlashcardController extends Controller
         if ($cardType === 'exercise') {
           // For exercises, store both question and instruction for consistency
           $content['question'] = $request->input('instruction'); // The main question/text
-          $content['instruction'] = $this->getGenericInstruction($content['type'] ?? 'exercise'); // Generic instruction
+          $content['instruction'] = $this->getGenericInstruction($content['type'] ?? 'exercise', $studyMaterial->language ?? 'en'); // Generic instruction
         } else {
           $content['question'] = $request->input('question');
         }
@@ -237,7 +237,7 @@ class FlashcardController extends Controller
         if ($cardType === 'exercise') {
           // For exercises, store both question and instruction for consistency
           $content[$cardIndex]['question'] = $request->input('instruction'); // The main question/text
-          $content[$cardIndex]['instruction'] = $this->getGenericInstruction($content[$cardIndex]['type'] ?? 'exercise'); // Generic instruction
+          $content[$cardIndex]['instruction'] = $this->getGenericInstruction($content[$cardIndex]['type'] ?? 'exercise', $studyMaterial->language ?? 'en'); // Generic instruction
         } else {
           $content[$cardIndex]['question'] = $request->input('question');
         }
@@ -392,7 +392,7 @@ class FlashcardController extends Controller
       if ($cardType === 'exercise') {
         // For exercises, store both question and instruction for consistency
         $newCardContent['question'] = $request->input('instruction'); // The main question/text
-        $newCardContent['instruction'] = $this->getGenericInstruction($cardType); // Generic instruction based on type
+        $newCardContent['instruction'] = $this->getGenericInstruction($cardType, $studyMaterial->language ?? 'en'); // Generic instruction based on type
       } else {
         $newCardContent['question'] = $request->input('question');
       }
@@ -467,21 +467,34 @@ class FlashcardController extends Controller
   }
 
   /**
-   * Get generic instruction based on exercise type
+   * Get generic instruction based on exercise type and language
    */
-  private function getGenericInstruction($type)
+  private function getGenericInstruction($type, $language = 'en')
   {
-    switch ($type) {
-      case 'fill_blank':
-        return 'Fill in the blank.';
-      case 'true_false':
-        return 'Determine if the statement is true or false.';
-      case 'short_answer':
-        return 'Answer in 2-3 sentences.';
-      case 'matching':
-        return 'Match the concepts with their definitions.';
-      default:
-        return 'Complete the exercise.';
-    }
+    $instructions = [
+      'en' => [
+        'fill_blank' => 'Fill in the blank.',
+        'true_false' => 'Determine if the statement is true or false.',
+        'short_answer' => 'Answer in 2-3 sentences.',
+        'matching' => 'Match the concepts with their definitions.',
+        'exercise' => 'Complete the exercise.'
+      ],
+      'si' => [
+        'fill_blank' => 'හිස් තැන පුරවන්න.',
+        'true_false' => 'ප්‍රකාශය සත්‍ය හෝ අසත්‍ය දැයි තීරණය කරන්න.',
+        'short_answer' => 'වාක්‍ය 2-3 කින් පිළිතුරු දෙන්න.',
+        'matching' => 'සංකල්ප ඒවායේ අර්ථ දැක්වීම් සමඟ ගැලපීම.',
+        'exercise' => 'අභ්‍යාසය සම්පූර්ණ කරන්න.'
+      ],
+      'ta' => [
+        'fill_blank' => 'வெற்று இடத்தை நிரப்பவும்.',
+        'true_false' => 'கூற்று உண்மை அல்லது பொய் என்பதை தீர்மானிக்கவும்.',
+        'short_answer' => '2-3 வாக்கியங்களில் பதிலளிக்கவும்.',
+        'matching' => 'கருத்துகளை அவற்றின் வரையறைகளுடன் பொருத்தவும்.',
+        'exercise' => 'பயிற்சியை முடிக்கவும்.'
+      ]
+    ];
+
+    return $instructions[$language][$type] ?? $instructions['en'][$type] ?? $instructions['en']['exercise'];
   }
 }
