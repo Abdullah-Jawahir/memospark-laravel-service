@@ -350,4 +350,130 @@ class DocumentController extends Controller
       }
     });
   }
+
+  /**
+   * Cancel document processing
+   */
+  public function cancel(Request $request, $documentId)
+  {
+    Log::info('DocumentController::cancel called', [
+      'document_id' => $documentId,
+      'has_supabase_user' => $request->has('supabase_user'),
+      'is_guest' => $request->input('is_guest')
+    ]);
+
+    try {
+      $isGuest = filter_var($request->input('is_guest', false), FILTER_VALIDATE_BOOLEAN);
+
+      if ($isGuest) {
+        // Handle guest cancellation
+        $guestUpload = GuestUpload::where('document_id', $documentId)->first();
+
+        if (!$guestUpload) {
+          return response()->json([
+            'error' => 'Document not found'
+          ], 404);
+        }
+
+        // Update status to cancelled
+        $guestUpload->update([
+          'status' => 'cancelled',
+          'metadata' => array_merge($guestUpload->metadata ?? [], [
+            'cancelled_at' => now()->toISOString(),
+            'cancelled_by' => 'user'
+          ])
+        ]);
+
+        // Try to cancel the background job if it's still queued
+        $this->cancelBackgroundJob($documentId);
+
+        Log::info('Guest document processing cancelled', ['document_id' => $documentId]);
+
+        return response()->json([
+          'message' => 'Document processing cancelled successfully',
+          'document_id' => $documentId,
+          'status' => 'cancelled'
+        ]);
+      } else {
+        // Handle authenticated user cancellation
+        $userId = null;
+        if ($request->has('supabase_user')) {
+          $userId = $request->supabase_user['id'];
+        }
+
+        if (!$userId) {
+          return response()->json([
+            'error' => 'User authentication required'
+          ], 401);
+        }
+
+        $document = Document::where('id', $documentId)
+          ->where('user_id', $userId)
+          ->first();
+
+        if (!$document) {
+          return response()->json([
+            'error' => 'Document not found or access denied'
+          ], 404);
+        }
+
+        // Update document status to cancelled
+        $document->update([
+          'status' => 'cancelled',
+          'metadata' => array_merge($document->metadata ?? [], [
+            'cancelled_at' => now()->toISOString(),
+            'cancelled_by' => 'user'
+          ])
+        ]);
+
+        // Try to cancel the background job if it's still queued
+        $this->cancelBackgroundJob($documentId);
+
+        Log::info('Document processing cancelled', [
+          'document_id' => $documentId,
+          'user_id' => $userId
+        ]);
+
+        return response()->json([
+          'message' => 'Document processing cancelled successfully',
+          'document_id' => $documentId,
+          'status' => 'cancelled'
+        ]);
+      }
+    } catch (\Exception $e) {
+      Log::error('Failed to cancel document processing', [
+        'document_id' => $documentId,
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'error' => 'Failed to cancel document processing'
+      ], 500);
+    }
+  }
+
+  /**
+   * Attempt to cancel background job
+   */
+  private function cancelBackgroundJob($documentId)
+  {
+    try {
+      // Simple approach: Log the cancellation attempt
+      // The job itself should check document status before processing
+      Log::info('Background job cancellation requested', [
+        'document_id' => $documentId,
+        'timestamp' => now()->toISOString()
+      ]);
+
+      // Note: The ProcessDocument job should check document status 
+      // before processing and abort if status is 'cancelled'
+
+    } catch (\Exception $e) {
+      Log::warning('Failed to cancel background job', [
+        'document_id' => $documentId,
+        'error' => $e->getMessage()
+      ]);
+    }
+  }
 }
