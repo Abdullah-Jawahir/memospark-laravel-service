@@ -54,9 +54,6 @@ class StudyTrackingController extends Controller
     // Verify the study material belongs to a document owned by this user (by id or email)
     $studyMaterial = StudyMaterial::with(['document.deck.user'])->find($request->study_material_id);
 
-    Log::info($studyMaterial ? $studyMaterial->toArray() : null);
-
-    Log::info($userId);
     $ownedByUser = false;
     if ($studyMaterial && $studyMaterial->document) {
       $documentOwnerSupabaseId = $studyMaterial->document->user_id ?? null; // Supabase UUID
@@ -494,6 +491,20 @@ class StudyTrackingController extends Controller
 
       if ($matchingDbMaterial) {
         $enrichedMaterial['id'] = $matchingDbMaterial->id;
+      }
+
+      // Ensure exercises have the proper format to match /materials API
+      if ($type === 'exercise') {
+        // If question is missing but instruction exists, set question to instruction
+        if (empty($enrichedMaterial['question']) && !empty($enrichedMaterial['instruction'])) {
+          $enrichedMaterial['question'] = $enrichedMaterial['instruction'];
+        }
+
+        // Ensure all required fields are present
+        $enrichedMaterial['difficulty'] = $enrichedMaterial['difficulty'] ?? 'beginner';
+        $enrichedMaterial['concepts'] = $enrichedMaterial['concepts'] ?? null;
+        $enrichedMaterial['definitions'] = $enrichedMaterial['definitions'] ?? null;
+        $enrichedMaterial['options'] = $enrichedMaterial['options'] ?? null;
       }
 
       $enriched[] = $enrichedMaterial;
