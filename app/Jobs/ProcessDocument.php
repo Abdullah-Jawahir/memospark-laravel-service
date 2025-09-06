@@ -104,7 +104,7 @@ class ProcessDocument implements ShouldQueue
                     if ($document->deck_id) {
                         $deck = \App\Models\Deck::find($document->deck_id);
                         if ($deck) {
-                            $remainingDocs = \App\Models\Document::where('deck_id', $deck->id)->count();
+                            $remainingDocs = Document::where('deck_id', $deck->id)->count();
                             if ($remainingDocs === 0) {
                                 $deck->delete();
                             }

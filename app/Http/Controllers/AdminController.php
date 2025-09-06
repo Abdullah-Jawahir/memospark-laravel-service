@@ -613,7 +613,7 @@ class AdminController extends Controller
     try {
       // Update the default value for Daily Flashcards goal type
       // We'll use the student_default as the main default since students are the primary users
-      $dailyFlashcardsGoal = \App\Models\GoalType::where('name', 'Daily Flashcards')->first();
+      $dailyFlashcardsGoal = GoalType::where('name', 'Daily Flashcards')->first();
 
       if ($dailyFlashcardsGoal) {
         $dailyFlashcardsGoal->update(['default_value' => $request->student_default]);
@@ -621,7 +621,7 @@ class AdminController extends Controller
 
       // Store admin default in a way we can retrieve it
       // For now, we'll create or update a special "Admin Daily Flashcards" goal type
-      $adminGoalType = \App\Models\GoalType::firstOrCreate(
+      $adminGoalType = GoalType::firstOrCreate(
         ['name' => 'Admin Daily Flashcards'],
         [
           'id' => \Illuminate\Support\Str::uuid(),
@@ -663,8 +663,8 @@ class AdminController extends Controller
     }
 
     try {
-      $studentDefault = \App\Models\GoalType::where('name', 'Daily Flashcards')->value('default_value') ?? 50;
-      $adminDefault = \App\Models\GoalType::where('name', 'Admin Daily Flashcards')->value('default_value') ?? 25;
+      $studentDefault = GoalType::where('name', 'Daily Flashcards')->value('default_value') ?? 50;
+      $adminDefault = GoalType::where('name', 'Admin Daily Flashcards')->value('default_value') ?? 25;
 
       return response()->json([
         'student_default' => $studentDefault,
