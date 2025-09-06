@@ -45,6 +45,15 @@ class ProcessDocument implements ShouldQueue
         $document = Document::find($this->documentId);
 
         if (!$document) {
+            Log::warning('ProcessDocument job: Document not found', ['document_id' => $this->documentId]);
+            return;
+        }
+
+        // Check if document processing has been cancelled
+        if ($document->status === 'cancelled') {
+            Log::info('ProcessDocument job: Document processing was cancelled, aborting', [
+                'document_id' => $this->documentId
+            ]);
             return;
         }
 
@@ -63,6 +72,19 @@ class ProcessDocument implements ShouldQueue
                 $this->difficulty,
                 $this->documentId
             );
+
+            // Check again if document was cancelled during processing
+            $document->refresh();
+            if ($document->status === 'cancelled') {
+                Log::info('ProcessDocument job: Document was cancelled during processing, aborting', [
+                    'document_id' => $this->documentId
+                ]);
+                // Clean up temp file
+                if (file_exists($tempPath)) {
+                    unlink($tempPath);
+                }
+                return;
+            }
 
             if ($result['status'] === 'done') {
                 // Update document status and metadata
