@@ -30,11 +30,13 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 // Document upload route for guest users
 Route::middleware(['throttle:api', 'guest.document'])->group(function () {
   Route::post('/guest/documents/upload', [DocumentController::class, 'upload']);
+  Route::delete('/guest/documents/{id}/cancel', [DocumentController::class, 'cancel']);
 });
 
 // Document upload route for authenticated users
 Route::middleware(['throttle:api', SupabaseAuth::class])->group(function () {
   Route::post('/documents/upload', [DocumentController::class, 'upload']);
+  Route::delete('/documents/{id}/cancel', [DocumentController::class, 'cancel']);
 });
 
 // Document status route - allow both authenticated and guest users

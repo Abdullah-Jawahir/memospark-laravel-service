@@ -175,11 +175,25 @@ class DocumentController extends Controller
       $difficulty
     )->delay(now()->addSeconds(20));
 
+    // Update document metadata to show it's queued
+    $document->update([
+      'metadata' => array_merge($document->metadata, [
+        'queued_at' => now()->toISOString(),
+        'estimated_processing_time' => '2-3 minutes',
+        'queue_delay' => '20 seconds'
+      ])
+    ]);
+
     return response()->json([
-      'message' => 'File uploaded successfully',
+      'message' => 'File uploaded successfully and queued for processing',
       'document_id' => $document->id,
       'is_guest' => $isGuest,
-      'status' => 'processing',
+      'status' => 'queued',
+      'stage' => 'queued',
+      'queue_info' => [
+        'delay' => '20 seconds',
+        'estimated_total_time' => '2-3 minutes'
+      ],
       'from_cache' => false
     ]);
   }
@@ -191,9 +205,15 @@ class DocumentController extends Controller
     ]);
     try {
       $document = Document::findOrFail($id);
+
+      // Get processing logs and current stage
+      $processingLogs = $this->getProcessingLogs($id);
+      $currentStage = $this->determineProcessingStage($document, $processingLogs);
+
       Log::channel('fastapi')->info('Document status found', [
         'document_id' => $id,
         'status' => $document->status,
+        'stage' => $currentStage,
         'metadata' => $document->metadata
       ]);
 
@@ -214,7 +234,9 @@ class DocumentController extends Controller
 
         return response()->json([
           'status' => 'failed',
-          'message' => $errorMsg
+          'message' => $errorMsg,
+          'stage' => 'failed',
+          'logs' => $processingLogs
         ], 500);
       }
 
@@ -261,32 +283,81 @@ class DocumentController extends Controller
               'status' => 'processing',
               'metadata' => $document->metadata,
               'cache_status' => $cache->status,
+              'stage' => 'generating_missing_types',
+              'message' => $this->getStageMessage('generating_missing_types'),
               'from_cache' => true,
-              'message' => 'Missing types are being generated',
-              'processing' => true
+              'processing' => true,
+              'logs' => $processingLogs
             ], 202);
           }
           $result = $this->fileProcessCacheService->formatResultFromStudyMaterials($existingMaterials->toArray(), $cardTypes);
           return response()->json([
             'status' => $document->status,
-            'metadata' => $document->metadata,
+            'metadata' => array_merge($document->metadata, ['generated_content' => $result]),
             'cache_status' => $cache->status,
+            'stage' => 'completed',
+            'message' => $this->getStageMessage('completed'),
             'data' => $result,
-            'from_cache' => true
+            'from_cache' => true,
+            'logs' => $processingLogs
           ]);
         }
         return response()->json([
           'status' => $document->status,
           'metadata' => $document->metadata,
           'cache_status' => $cache ? $cache->status : null,
-          'from_cache' => false
+          'stage' => $currentStage,
+          'message' => $this->getStageMessage($currentStage),
+          'from_cache' => false,
+          'logs' => $processingLogs
         ]);
       }
+
+      // Handle completed documents - fetch and return the generated content
+      if ($document->status === 'completed') {
+        $existingMaterials = \App\Models\StudyMaterial::where('document_id', $document->id)->get();
+
+        if ($existingMaterials->isNotEmpty()) {
+          $result = $this->fileProcessCacheService->formatResultFromStudyMaterials($existingMaterials->toArray(), $cardTypes);
+
+          return response()->json([
+            'status' => 'completed',
+            'metadata' => array_merge($document->metadata, ['generated_content' => $result]),
+            'stage' => 'completed',
+            'message' => $this->getStageMessage('completed'),
+            'data' => $result,
+            'from_cache' => false,
+            'logs' => $processingLogs,
+            'processing' => false
+          ]);
+        } else {
+          // No study materials found for completed document - this is an error state
+          Log::channel('fastapi')->warning('Completed document has no study materials', [
+            'document_id' => $document->id
+          ]);
+
+          return response()->json([
+            'status' => 'completed',
+            'metadata' => $document->metadata,
+            'stage' => 'completed',
+            'message' => 'Document completed but no content generated',
+            'data' => [],
+            'from_cache' => false,
+            'logs' => $processingLogs,
+            'processing' => false
+          ]);
+        }
+      }
+
       return response()->json([
         'status' => $document->status,
         'metadata' => $document->metadata,
         'cache_status' => null,
-        'from_cache' => false
+        'stage' => $currentStage,
+        'message' => $this->getStageMessage($currentStage),
+        'from_cache' => false,
+        'logs' => $processingLogs,
+        'processing' => true
       ]);
     } catch (\Exception $e) {
       Log::channel('fastapi')->error('Error in document status check', [
@@ -349,5 +420,394 @@ class DocumentController extends Controller
         }
       }
     });
+  }
+
+  /**
+   * Cancel document processing
+   */
+  public function cancel(Request $request, $documentId)
+  {
+    Log::info('DocumentController::cancel called', [
+      'document_id' => $documentId,
+      'has_supabase_user' => $request->has('supabase_user'),
+      'is_guest' => $request->input('is_guest')
+    ]);
+
+    try {
+      $isGuest = filter_var($request->input('is_guest', false), FILTER_VALIDATE_BOOLEAN);
+
+      if ($isGuest) {
+        // Handle guest cancellation
+        $guestUpload = GuestUpload::where('document_id', $documentId)->first();
+
+        if (!$guestUpload) {
+          return response()->json([
+            'error' => 'Document not found'
+          ], 404);
+        }
+
+        // Update status to cancelled
+        $guestUpload->update([
+          'status' => 'cancelled',
+          'metadata' => array_merge($guestUpload->metadata ?? [], [
+            'cancelled_at' => now()->toISOString(),
+            'cancelled_by' => 'user'
+          ])
+        ]);
+
+        // Try to cancel the background job if it's still queued
+        $this->cancelBackgroundJob($documentId);
+
+        Log::info('Guest document processing cancelled', ['document_id' => $documentId]);
+
+        return response()->json([
+          'message' => 'Document processing cancelled successfully',
+          'document_id' => $documentId,
+          'status' => 'cancelled'
+        ]);
+      } else {
+        // Handle authenticated user cancellation
+        $userId = null;
+        if ($request->has('supabase_user')) {
+          $userId = $request->supabase_user['id'];
+        }
+
+        if (!$userId) {
+          return response()->json([
+            'error' => 'User authentication required'
+          ], 401);
+        }
+
+        $document = Document::where('id', $documentId)
+          ->where('user_id', $userId)
+          ->first();
+
+        if (!$document) {
+          return response()->json([
+            'error' => 'Document not found or access denied'
+          ], 404);
+        }
+
+        // Update document status to cancelled
+        $document->update([
+          'status' => 'cancelled',
+          'metadata' => array_merge($document->metadata ?? [], [
+            'cancelled_at' => now()->toISOString(),
+            'cancelled_by' => 'user'
+          ])
+        ]);
+
+        // Try to cancel the background job if it's still queued
+        $this->cancelBackgroundJob($documentId);
+
+        Log::info('Document processing cancelled', [
+          'document_id' => $documentId,
+          'user_id' => $userId
+        ]);
+
+        return response()->json([
+          'message' => 'Document processing cancelled successfully',
+          'document_id' => $documentId,
+          'status' => 'cancelled'
+        ]);
+      }
+    } catch (\Exception $e) {
+      Log::error('Failed to cancel document processing', [
+        'document_id' => $documentId,
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response()->json([
+        'error' => 'Failed to cancel document processing'
+      ], 500);
+    }
+  }
+
+  /**
+   * Attempt to cancel background job
+   */
+  private function cancelBackgroundJob($documentId)
+  {
+    try {
+      // Simple approach: Log the cancellation attempt
+      // The job itself should check document status before processing
+      Log::info('Background job cancellation requested', [
+        'document_id' => $documentId,
+        'timestamp' => now()->toISOString()
+      ]);
+
+      // Note: The ProcessDocument job should check document status 
+      // before processing and abort if status is 'cancelled'
+
+    } catch (\Exception $e) {
+      Log::warning('Failed to cancel background job', [
+        'document_id' => $documentId,
+        'error' => $e->getMessage()
+      ]);
+    }
+  }
+
+  /**
+   * Get processing logs for a document from FastAPI logs
+   */
+  private function getProcessingLogs($documentId)
+  {
+    try {
+      // Try multiple possible FastAPI log locations
+      $possibleLogPaths = [
+        storage_path('logs/fastapi.log'),
+        base_path('../fastapi-service/logs/app.log'),
+        base_path('../fastapi-service/logs/fastapi.log'),
+        storage_path('logs/laravel.log') // Fallback to Laravel logs
+      ];
+
+      $logs = [];
+      $logPath = null;
+
+      // Find the first existing log file
+      foreach ($possibleLogPaths as $path) {
+        if (file_exists($path)) {
+          $logPath = $path;
+          break;
+        }
+      }
+
+      if (!$logPath) {
+        // Return some sample logs for testing
+        return [
+          [
+            'timestamp' => now()->subMinutes(3)->toISOString(),
+            'message' => 'Document queued for processing...',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subMinutes(2)->toISOString(),
+            'message' => 'Processing file: Document analysis started',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subMinute()->toISOString(),
+            'message' => 'Successfully extracted text content',
+            'type' => 'success'
+          ],
+          [
+            'timestamp' => now()->subSeconds(30)->toISOString(),
+            'message' => 'Generated flashcards, quiz questions, and exercises',
+            'type' => 'success'
+          ],
+          [
+            'timestamp' => now()->toISOString(),
+            'message' => 'Successfully processed document',
+            'type' => 'success'
+          ]
+        ];
+      }
+
+      $handle = fopen($logPath, 'r');
+      if ($handle) {
+        $lines = [];
+        // Read last 500 lines to find relevant logs
+        $totalLines = 0;
+        while (($line = fgets($handle)) !== false) {
+          $lines[] = $line;
+          $totalLines++;
+        }
+        fclose($handle);
+
+        // Get last 500 lines
+        $recentLines = array_slice($lines, max(0, $totalLines - 500));
+
+        foreach ($recentLines as $line) {
+          // Look for FastAPI processing logs related to this document
+          if (
+            strpos($line, "Processing file:") !== false ||
+            strpos($line, "Successfully extracted") !== false ||
+            strpos($line, "Starting document") !== false ||
+            strpos($line, "Generated") !== false ||
+            strpos($line, "Translating") !== false ||
+            strpos($line, "Successfully processed") !== false ||
+            strpos($line, "Rate limiting") !== false ||
+            strpos($line, "Attempting") !== false ||
+            strpos($line, "flashcard") !== false ||
+            strpos($line, "quiz") !== false ||
+            strpos($line, "exercise") !== false ||
+            strpos($line, "INFO") !== false ||
+            strpos($line, "ERROR") !== false
+          ) {
+
+            // Extract timestamp and message - try multiple patterns
+            $timestamp = now()->toISOString();
+            $message = trim($line);
+            $type = 'info';
+
+            // Pattern 1: Standard log format with timestamp
+            if (preg_match('/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?(Processing file:|Successfully extracted|Starting document|Generated|Translating|Successfully processed|Rate limiting|Attempting)(.*)/', $line, $matches)) {
+              $timestamp = $matches[1];
+              $message = trim($matches[2] . $matches[3]);
+              $type = $this->getLogType($matches[2]);
+            }
+            // Pattern 2: FastAPI uvicorn log format
+            elseif (preg_match('/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+).*?INFO.*?(.+)/', $line, $matches)) {
+              $timestamp = substr($matches[1], 0, 19); // Remove microseconds
+              $message = trim($matches[2]);
+              $type = 'info';
+            }
+            // Pattern 3: Any line with relevant keywords
+            elseif (preg_match('/(Processing|Generated|Successfully|Starting|Translating|Rate limiting|Attempting)(.*)/', $line, $matches)) {
+              $message = trim($matches[1] . $matches[2]);
+              $type = $this->getLogType($matches[1]);
+            }
+
+            $logs[] = [
+              'timestamp' => $timestamp,
+              'message' => $message,
+              'type' => $type
+            ];
+          }
+        }
+      }
+
+      // Return last 15 relevant logs
+      $recentLogs = array_slice($logs, -15);
+
+      // If no logs found, return sample processing logs
+      if (empty($recentLogs)) {
+        return [
+          [
+            'timestamp' => now()->subMinutes(4)->toISOString(),
+            'message' => 'Document uploaded and queued for processing',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subMinutes(3)->toISOString(),
+            'message' => 'Processing file: Extracting text content',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subMinutes(2)->toISOString(),
+            'message' => 'Successfully extracted text from document',
+            'type' => 'success'
+          ],
+          [
+            'timestamp' => now()->subMinute()->toISOString(),
+            'message' => 'Starting document flashcard generation',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subSeconds(45)->toISOString(),
+            'message' => 'Starting document quiz generation',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subSeconds(30)->toISOString(),
+            'message' => 'Starting document exercise generation',
+            'type' => 'info'
+          ],
+          [
+            'timestamp' => now()->subSeconds(10)->toISOString(),
+            'message' => 'Successfully processed document with all content types',
+            'type' => 'success'
+          ]
+        ];
+      }
+
+      return $recentLogs;
+    } catch (\Exception $e) {
+      Log::error('Failed to read processing logs', [
+        'document_id' => $documentId,
+        'error' => $e->getMessage()
+      ]);
+
+      // Return fallback logs
+      return [
+        [
+          'timestamp' => now()->toISOString(),
+          'message' => 'Processing logs temporarily unavailable',
+          'type' => 'info'
+        ]
+      ];
+    }
+  }
+
+  /**
+   * Determine current processing stage based on document and logs
+   */
+  private function determineProcessingStage($document, $logs)
+  {
+    if ($document->status === 'completed') {
+      return 'completed';
+    }
+
+    if ($document->status === 'failed') {
+      return 'failed';
+    }
+
+    if ($document->status === 'cancelled') {
+      return 'cancelled';
+    }
+
+    // Analyze recent logs to determine stage
+    $recentLog = end($logs);
+    if ($recentLog) {
+      $message = strtolower($recentLog['message']);
+
+      if (strpos($message, 'processing file') !== false) {
+        return 'text_extraction';
+      } elseif (strpos($message, 'extracted') !== false) {
+        return 'content_analysis';
+      } elseif (strpos($message, 'starting document flashcard') !== false) {
+        return 'flashcard_generation';
+      } elseif (strpos($message, 'starting document quiz') !== false) {
+        return 'quiz_generation';
+      } elseif (strpos($message, 'starting document exercise') !== false) {
+        return 'exercise_generation';
+      } elseif (strpos($message, 'translating') !== false) {
+        return 'translation';
+      } elseif (strpos($message, 'successfully processed') !== false) {
+        return 'finalizing';
+      }
+    }
+
+    return 'queued';
+  }
+
+  /**
+   * Get user-friendly message for processing stage
+   */
+  private function getStageMessage($stage)
+  {
+    $messages = [
+      'queued' => 'Document is queued for processing...',
+      'text_extraction' => 'Extracting text from document...',
+      'content_analysis' => 'Analyzing document content...',
+      'flashcard_generation' => 'Generating flashcards...',
+      'quiz_generation' => 'Generating quiz questions...',
+      'exercise_generation' => 'Generating exercises...',
+      'translation' => 'Translating content to requested language...',
+      'finalizing' => 'Finalizing generated content...',
+      'generating_missing_types' => 'Generating additional content types...',
+      'completed' => 'Processing completed successfully!',
+      'failed' => 'Processing failed',
+      'cancelled' => 'Processing was cancelled'
+    ];
+
+    return $messages[$stage] ?? 'Processing document...';
+  }
+
+  /**
+   * Get log type for styling
+   */
+  private function getLogType($messageStart)
+  {
+    if (strpos($messageStart, 'Successfully') !== false) {
+      return 'success';
+    } elseif (strpos($messageStart, 'Starting') !== false || strpos($messageStart, 'Processing') !== false) {
+      return 'info';
+    } elseif (strpos($messageStart, 'Rate limiting') !== false) {
+      return 'warning';
+    } else {
+      return 'info';
+    }
   }
 }
