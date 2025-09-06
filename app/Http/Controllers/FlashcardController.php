@@ -278,13 +278,9 @@ class FlashcardController extends Controller
       }
 
       $studyMaterial->content = $content;
-      Log::info("Before save - StudyMaterial ID: {$studyMaterial->id}, Content: " . json_encode($content));
-      $studyMaterial->save();
-      Log::info("After save - StudyMaterial ID: {$studyMaterial->id}");
 
       // Reload from database to verify save
       $reloaded = StudyMaterial::find($studyMaterial->id);
-      Log::info("Reloaded content: " . json_encode($reloaded->content));
 
       return response()->json([
         'success' => true,
