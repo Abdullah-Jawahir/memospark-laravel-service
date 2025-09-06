@@ -12,6 +12,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class GenerateMissingCardTypes implements ShouldQueue
 {
@@ -46,6 +47,30 @@ class GenerateMissingCardTypes implements ShouldQueue
         if (!$document || empty($this->missingTypes)) {
             return;
         }
+
+        // Check if the missing types are now available (generated since job was queued)
+        $existingMaterials = StudyMaterial::where('document_id', $this->documentId)->get();
+        $existingTypes = $existingMaterials->pluck('type')->unique()->toArray();
+        $stillMissingTypes = array_diff($this->missingTypes, $existingTypes);
+
+        // If all types are now available, no need to call FastAPI
+        if (empty($stillMissingTypes)) {
+            Log::channel('fastapi')->info('All missing types are now available, skipping FastAPI call', [
+                'document_id' => $this->documentId,
+                'originally_missing' => $this->missingTypes,
+                'existing_types' => $existingTypes
+            ]);
+            return;
+        }
+
+        // Only process the types that are still actually missing
+        Log::channel('fastapi')->info('Processing still missing card types', [
+            'document_id' => $this->documentId,
+            'originally_missing' => $this->missingTypes,
+            'still_missing' => $stillMissingTypes,
+            'existing_types' => $existingTypes
+        ]);
+
         $uploadedFile = new \Illuminate\Http\UploadedFile(
             $this->filePath,
             $this->originalFilename,
@@ -53,10 +78,13 @@ class GenerateMissingCardTypes implements ShouldQueue
             null,
             true
         );
-        $fastApiResult = $fastApiService->processFile($uploadedFile, $this->language, $this->missingTypes, $this->difficulty);
+
+        // Use the still missing types instead of the original missing types
+        $fastApiResult = $fastApiService->processFile($uploadedFile, $this->language, $stillMissingTypes, $this->difficulty);
         $generated = $fastApiResult['generated_content'] ?? $fastApiResult['generated_cards'] ?? $fastApiResult;
+
         // Save new study materials
-        foreach ($this->missingTypes as $type) {
+        foreach ($stillMissingTypes as $type) {
             if (!empty($generated[$type])) {
                 foreach ($generated[$type] as $card) {
                     StudyMaterial::create([
