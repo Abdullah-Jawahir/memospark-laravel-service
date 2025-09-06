@@ -37,7 +37,7 @@ class DocumentController extends Controller
 
     try {
       $request->validate([
-        'file' => 'required|file|mimes:pdf,docx,pptx,jpg,jpeg,png|max:10240', // 10MB max
+        'file' => 'required|file|mimes:pdf,docx|max:10240', // 10MB max
         'language' => 'required|in:en,si,ta',
         'is_guest' => 'required|in:0,1,true,false',
         'deck_name' => 'required|string|max:255',
