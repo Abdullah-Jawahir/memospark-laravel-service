@@ -277,7 +277,9 @@ class FlashcardController extends Controller
         $cardData = $content[$cardIndex];
       }
 
+
       $studyMaterial->content = $content;
+      $studyMaterial->save();
 
       // Reload from database to verify save
       $reloaded = StudyMaterial::find($studyMaterial->id);
