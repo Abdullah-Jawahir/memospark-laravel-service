@@ -223,8 +223,11 @@ class FlashcardController extends Controller
         } elseif ($cardType === 'exercise') {
           $content['instruction'] = $request->input('instruction');
           $content['exercise_text'] = $request->input('exercise_text'); // Add exercise_text handling
-          $content['question'] = $request->input('exercise_text'); // Also update question field for consistency
           $content['exercise_type'] = $request->input('exercise_type', 'fill_blank');
+
+          if ($request->has('question')) {
+            $content['question'] = $request->input('question');
+          }
 
           if ($content['exercise_type'] === 'matching') {
             $content['concepts'] = $request->input('concepts');
@@ -256,8 +259,11 @@ class FlashcardController extends Controller
         } elseif ($cardType === 'exercise') {
           $content[$cardIndex]['instruction'] = $request->input('instruction');
           $content[$cardIndex]['exercise_text'] = $request->input('exercise_text'); // Add exercise_text handling
-          $content[$cardIndex]['question'] = $request->input('exercise_text'); // Also update question field for consistency
           $content[$cardIndex]['exercise_type'] = $request->input('exercise_type', 'fill_blank');
+
+          if ($request->has('question')) {
+            $content[$cardIndex]['question'] = $request->input('question');
+          }
 
           if ($content[$cardIndex]['exercise_type'] === 'matching') {
             $content[$cardIndex]['concepts'] = $request->input('concepts');
@@ -277,7 +283,9 @@ class FlashcardController extends Controller
         $cardData = $content[$cardIndex];
       }
 
+
       $studyMaterial->content = $content;
+      $studyMaterial->save();
 
       // Reload from database to verify save
       $reloaded = StudyMaterial::find($studyMaterial->id);
