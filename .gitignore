@@ -28,7 +28,7 @@ storage/logs/*
 
 # Composer
 composer.phar
-composer.lock
+# composer.lock is intentionally committed for reproducible builds
 
 # NPM/Yarn
 npm-debug.log*
