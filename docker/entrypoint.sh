@@ -1,8 +1,8 @@
 #!/bin/sh
-set -e
+# NOTE: no "set -e" — artisan commands may fail gracefully but supervisor must always start
 
-# ── Render injects PORT; default to 10000 if not set ──────
-export PORT="${PORT:-10000}"
+# ── Railway injects PORT automatically ────────────────────
+export PORT="${PORT:-8080}"
 
 echo "==> Starting MemoSpark Laravel (port $PORT)"
 
@@ -10,19 +10,27 @@ echo "==> Starting MemoSpark Laravel (port $PORT)"
 envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # ── Ensure writable directories exist ─────────────────────
-mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
-chown -R www-data:www-data storage bootstrap/cache
-chmod -R 775 storage bootstrap/cache
+mkdir -p /var/www/html/storage/framework/{sessions,views,cache} \
+         /var/www/html/storage/logs \
+         /var/www/html/bootstrap/cache
+chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# ── Run migrations (non-interactive, will skip if DB unreachable) ──
+cd /var/www/html
+
+# ── Cache config & routes (always safe) ───────────────────
+echo "==> Caching config and routes..."
+php artisan config:cache  || echo "WARNING: config:cache failed."
+php artisan route:cache   || echo "WARNING: route:cache failed."
+
+# ── Skip view:cache — API-only service, no Blade views compiled ──
+# php artisan view:cache
+
+# ── Run migrations (only after config is cached so DB env vars are loaded) ──
 echo "==> Running migrations..."
-php artisan migrate --force --no-interaction || echo "WARNING: Migrations failed or skipped."
-
-# ── Cache config / routes / views for production ──────────
-echo "==> Caching config, routes, views..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan migrate --force --no-interaction \
+  && echo "INFO: Migrations completed." \
+  || echo "WARNING: Migrations failed or DB not reachable yet."
 
 # ── Start supervisor (manages nginx + php-fpm + queue) ─────
 echo "==> Launching supervisor..."
