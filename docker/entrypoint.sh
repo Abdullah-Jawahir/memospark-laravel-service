@@ -1,5 +1,5 @@
 #!/bin/sh
-# NOTE: no "set -e" — artisan commands may fail gracefully but supervisor must always start
+# No "set -e" — individual failures must not kill the container
 
 # ── Railway injects PORT automatically ────────────────────
 export PORT="${PORT:-8080}"
@@ -18,15 +18,14 @@ chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 cd /var/www/html
 
-# ── Cache config & routes (always safe) ───────────────────
-echo "==> Caching config and routes..."
-php artisan config:cache  || echo "WARNING: config:cache failed."
-php artisan route:cache   || echo "WARNING: route:cache failed."
+# ── Clear any stale bootstrap cache from the image ────────
+rm -f bootstrap/cache/config.php bootstrap/cache/routes*.php
 
-# ── Skip view:cache — API-only service, no Blade views compiled ──
-# php artisan view:cache
+# ── Cache routes only (safe — no view compilation involved) ──
+echo "==> Caching routes..."
+php artisan route:cache || echo "WARNING: route:cache failed, continuing."
 
-# ── Run migrations (only after config is cached so DB env vars are loaded) ──
+# ── Run migrations ─────────────────────────────────────────
 echo "==> Running migrations..."
 php artisan migrate --force --no-interaction \
   && echo "INFO: Migrations completed." \
@@ -35,3 +34,4 @@ php artisan migrate --force --no-interaction \
 # ── Start supervisor (manages nginx + php-fpm + queue) ─────
 echo "==> Launching supervisor..."
 exec supervisord -c /etc/supervisor/conf.d/supervisord.conf
+
