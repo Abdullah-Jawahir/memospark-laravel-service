@@ -6,8 +6,8 @@ export PORT="${PORT:-8080}"
 
 echo "==> Starting MemoSpark Laravel (port $PORT)"
 
-# ── Inject PORT into nginx config ─────────────────────────
-envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+# ── Copy nginx config and inject PORT using sed (safer than envsubst) ────
+sed "s/listen 8080;/listen ${PORT};/" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # ── Ensure writable directories exist ─────────────────────
 mkdir -p /var/www/html/storage/framework/{sessions,views,cache} \
