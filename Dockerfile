@@ -16,21 +16,7 @@ RUN composer install \
   --ignore-platform-reqs
 
 # ============================================================
-# Stage 2 – Node / Vite asset build
-# ============================================================
-FROM node:20-alpine AS assets
-
-WORKDIR /app
-
-COPY package.json ./
-RUN npm install
-
-COPY . .
-
-RUN npm run build
-
-# ============================================================
-# Stage 3 – Production image (Nginx + PHP-FPM + Supervisor)
+# Stage 2 – Production image (Nginx + PHP-FPM + Supervisor)
 # ============================================================
 FROM php:8.2-fpm-alpine AS production
 
@@ -82,7 +68,6 @@ RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
 WORKDIR /var/www/html
 
 COPY --from=vendor /app/vendor ./vendor
-COPY --from=assets /app/public/build ./public/build
 COPY . .
 
 # Writable directories
