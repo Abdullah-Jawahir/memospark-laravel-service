@@ -5,18 +5,15 @@ FROM composer:2.7 AS vendor
 
 WORKDIR /app
 
-COPY composer.json composer.lock ./
+# Copy everything so composer.lock is used when present
+COPY . .
 
 RUN composer install \
   --no-dev \
   --no-scripts \
-  --no-autoloader \
   --prefer-dist \
+  --optimize-autoloader \
   --ignore-platform-reqs
-
-COPY . .
-
-RUN composer dump-autoload --optimize --no-dev
 
 # ============================================================
 # Stage 2 – Node / Vite asset build
