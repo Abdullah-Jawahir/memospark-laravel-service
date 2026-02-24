@@ -12,8 +12,6 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Custom CORS middleware that definitely works
-        $middleware->prepend(\App\Http\Middleware\CustomCors::class);
         $middleware->alias([
             'guest.document' => \App\Http\Middleware\GuestDocumentAccess::class,
             'document.access' => \App\Http\Middleware\DocumentAccess::class,
