@@ -56,10 +56,21 @@ return Application::configure(basePath: dirname(__DIR__))
                         'error' => class_basename($e)
                     ], $status);
                 } else {
-                    // Generic error - include message in debug mode
+                    // Log the error for debugging
+                    \Illuminate\Support\Facades\Log::error('API Error', [
+                        'exception' => class_basename($e),
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    
+                    // Always include error message for API responses (helps debugging)
                     $response = response()->json([
-                        'message' => config('app.debug') ? $e->getMessage() : 'Server Error',
-                        'error' => class_basename($e)
+                        'message' => $e->getMessage() ?: 'Server Error',
+                        'error' => class_basename($e),
+                        'file' => config('app.debug') ? $e->getFile() : null,
+                        'line' => config('app.debug') ? $e->getLine() : null,
                     ], $status);
                 }
                 
