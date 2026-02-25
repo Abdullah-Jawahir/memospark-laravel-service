@@ -21,6 +21,11 @@ cd /var/www/html
 # ── Clear any stale bootstrap cache from the image ────────
 rm -f bootstrap/cache/config.php bootstrap/cache/routes*.php
 
+# Add these two lines to guarantee Laravel reads your cors.php
+echo "==> Clearing config and caches..."
+php artisan config:clear
+php artisan cache:clear
+
 # ── Cache routes only (safe — no view compilation involved) ──
 echo "==> Caching routes..."
 php artisan route:cache || echo "WARNING: route:cache failed, continuing."
