@@ -80,6 +80,6 @@ RUN mkdir -p storage/framework/{sessions,views,cache} \
 # Remove docker helper files from app dir (already placed at their targets)
 RUN rm -rf docker .env.example
 
-EXPOSE 10000
+EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
