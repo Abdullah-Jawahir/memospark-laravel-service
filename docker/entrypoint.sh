@@ -13,6 +13,12 @@ sed "s/listen 8080;/listen ${PORT};/" /etc/nginx/nginx.conf.template > /etc/ngin
 mkdir -p /var/www/html/storage/framework/{sessions,views,cache} \
          /var/www/html/storage/logs \
          /var/www/html/bootstrap/cache
+
+# Create nginx temp directories for file uploads
+mkdir -p /tmp/nginx_client_body /tmp/nginx_proxy /tmp/nginx_fastcgi /tmp/nginx_uwsgi /tmp/nginx_scgi
+chown -R www-data:www-data /tmp/nginx_client_body /tmp/nginx_proxy /tmp/nginx_fastcgi /tmp/nginx_uwsgi /tmp/nginx_scgi
+chmod -R 755 /tmp/nginx_client_body /tmp/nginx_proxy /tmp/nginx_fastcgi /tmp/nginx_uwsgi /tmp/nginx_scgi
+
 chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
