@@ -1,3 +1,4 @@
+# Build: 2026-04-08
 # ============================================================
 # Stage 1 – Composer dependencies
 # ============================================================
@@ -27,6 +28,7 @@ RUN apk add --no-cache \
   nginx \
   supervisor \
   mysql-client \
+  postgresql-client \
   curl \
   libpng-dev \
   libjpeg-turbo-dev \
@@ -34,6 +36,7 @@ RUN apk add --no-cache \
   freetype-dev \
   libzip-dev \
   oniguruma-dev \
+  libpq-dev \
   gettext \
   && docker-php-ext-configure gd \
   --with-freetype \
@@ -41,6 +44,8 @@ RUN apk add --no-cache \
   --with-webp \
   && docker-php-ext-install -j$(nproc) \
   pdo_mysql \
+  pdo_pgsql \
+  pgsql \
   mbstring \
   exif \
   pcntl \
@@ -53,7 +58,6 @@ RUN apk add --no-cache \
 COPY docker/php.ini /usr/local/etc/php/conf.d/app.ini
 
 # ── Nginx configuration ────────────────────────────────────
-# Uses envsubst at runtime so it picks up Render's $PORT
 COPY docker/nginx.conf /etc/nginx/nginx.conf.template
 
 # ── Supervisor configuration ────────────────────────────────
@@ -61,7 +65,6 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # ── Entrypoint ─────────────────────────────────────────────
 COPY docker/entrypoint.sh /entrypoint.sh
-# Strip Windows line endings (CRLF → LF) to guarantee Linux compatibility
 RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 # ── Application files ──────────────────────────────────────
@@ -70,6 +73,9 @@ WORKDIR /var/www/html
 COPY --from=vendor /app/vendor ./vendor
 COPY . .
 
+# ── View config (ensures storage_path() is used, not realpath()) ──
+COPY docker/view.php /var/www/html/config/view.php
+
 # Writable directories
 RUN mkdir -p storage/framework/{sessions,views,cache} \
   storage/logs \
@@ -77,8 +83,8 @@ RUN mkdir -p storage/framework/{sessions,views,cache} \
   && chown -R www-data:www-data storage bootstrap/cache \
   && chmod -R 775 storage bootstrap/cache
 
-# Remove docker helper files from app dir (already placed at their targets)
-RUN rm -rf docker .env.example
+# Remove docker helper files from app dir
+RUN rm -rf .env.example
 
 EXPOSE 8080
 
