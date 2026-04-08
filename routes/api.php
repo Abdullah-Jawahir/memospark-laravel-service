@@ -250,3 +250,13 @@ Route::middleware(['supabase.auth'])->prefix('profile')->group(function () {
   Route::put('/', [ProfileController::class, 'updateProfile']);
   Route::put('/password', [ProfileController::class, 'updatePassword']);
 });
+
+// Temporary debug endpoint to check loaded PHP extensions and database connection info
+Route::get('/debug-extensions', function () {
+  return response()->json([
+    'pdo_pgsql' => extension_loaded('pdo_pgsql'),
+    'pdo_mysql' => extension_loaded('pdo_mysql'),
+    'db_connection' => env('DB_CONNECTION'),
+    'db_host' => env('DB_HOST'),
+  ]);
+});
