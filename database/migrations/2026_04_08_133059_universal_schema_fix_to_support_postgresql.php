@@ -232,18 +232,50 @@ return new class extends Migration
         Schema::dropIfExists('search_flashcard_searches');
         Schema::dropIfExists('study_activity_timings');
 
-        Schema::table('user_goals', function (Blueprint $table) {
-            $table->dropForeign(['goal_type_id']);
-            $table->dropIndex('idx_ug_user_goal_type');
-            $table->dropIndex('idx_ug_user_active');
-            $table->dropColumn(['goal_type_id', 'target_value', 'current_value', 'is_active']);
-        });
+        if (Schema::hasTable('user_goals')) {
+            Schema::table('user_goals', function (Blueprint $table) {
+                if (Schema::hasColumn('user_goals', 'goal_type_id')) {
+                    $foreignKeyName = 'user_goals_goal_type_id_foreign';
+
+                    if (Schema::hasIndex('user_goals', $foreignKeyName)) {
+                        $table->dropForeign($foreignKeyName);
+                    }
+
+                    if (Schema::hasIndex('user_goals', 'idx_ug_user_goal_type')) {
+                        $table->dropIndex('idx_ug_user_goal_type');
+                    }
+                }
+
+                if (Schema::hasColumn('user_goals', 'is_active') && Schema::hasIndex('user_goals', 'idx_ug_user_active')) {
+                    $table->dropIndex('idx_ug_user_active');
+                }
+
+                $columnsToDrop = [];
+
+                foreach (['goal_type_id', 'target_value', 'current_value', 'is_active'] as $column) {
+                    if (Schema::hasColumn('user_goals', $column)) {
+                        $columnsToDrop[] = $column;
+                    }
+                }
+
+                if ($columnsToDrop !== []) {
+                    $table->dropColumn($columnsToDrop);
+                }
+            });
+        }
 
         Schema::dropIfExists('goal_types');
 
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropIndex('idx_users_supabase_user_id');
-            $table->dropColumn('supabase_user_id');
-        });
+        if (Schema::hasTable('users')) {
+            Schema::table('users', function (Blueprint $table) {
+                if (Schema::hasIndex('users', 'idx_users_supabase_user_id')) {
+                    $table->dropIndex('idx_users_supabase_user_id');
+                }
+
+                if (Schema::hasColumn('users', 'supabase_user_id')) {
+                    $table->dropColumn('supabase_user_id');
+                }
+            });
+        }
     }
 };
