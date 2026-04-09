@@ -15,7 +15,7 @@ return new class extends Migration {
       $table->string('card_types_hash', 64);
       $table->string('difficulty', 16)->default('beginner');
       $table->json('result')->nullable();
-      $table->enum('status', ['processing', 'done', 'failed'])->default('processing');
+      $table->string('status', 32)->default('processing');
       $table->timestamps();
       $table->unique(['file_hash', 'language', 'difficulty', 'card_types_hash'], 'file_process_cache_unique');
     });

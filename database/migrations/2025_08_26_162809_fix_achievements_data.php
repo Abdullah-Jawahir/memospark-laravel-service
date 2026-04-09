@@ -12,6 +12,15 @@ return new class extends Migration
      */
     public function up(): void
     {
+        $driver = DB::getDriverName();
+        $emojiHex = [
+            '🎯' => 'F09F8EAF',
+            '🚀' => 'F09F9A80',
+            '🧠' => 'F09FA7A0',
+            '🏆' => 'F09F8F86',
+            '🥇' => 'F09FA587',
+        ];
+
         // Fix existing achievements with incorrect data
         $achievementUpdates = [
             'Getting Started' => [
@@ -41,6 +50,19 @@ return new class extends Migration
         ];
 
         foreach ($achievementUpdates as $name => $data) {
+            if ($driver === 'pgsql' && isset($emojiHex[$data['icon']])) {
+                DB::statement(
+                    "UPDATE achievements
+                     SET icon = convert_from(decode('{$emojiHex[$data['icon']]}', 'hex'), 'UTF8'),
+                         points = ?,
+                         updated_at = ?
+                     WHERE name = ?",
+                    [$data['points'], now(), $name]
+                );
+
+                continue;
+            }
+
             DB::table('achievements')
                 ->where('name', $name)
                 ->update([

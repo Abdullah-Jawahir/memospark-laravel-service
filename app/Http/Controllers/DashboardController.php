@@ -6,6 +6,7 @@ use App\Models\Deck;
 use App\Models\UserGoal;
 use App\Models\Achievement;
 use Illuminate\Http\Request;
+use App\Models\User;
 use App\Models\StudyMaterial;
 use Illuminate\Support\Carbon;
 use App\Models\FlashcardReview;
@@ -24,21 +25,7 @@ class DashboardController extends Controller
         $userId = $supabaseUser['id'];
         $today = Carbon::today();
         // Resolve local app user (numeric) for reviews table
-        $userRole = $supabaseUser['role'] ?? 'student';
-        $appUser = \App\Models\User::firstOrCreate(
-            ['email' => $supabaseUser['email']],
-            [
-                'id' => $userId,
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-                'user_type' => $userRole,
-                'password' => null,
-            ]
-        );
-
-        // Update user_type if it has changed
-        if ($appUser->user_type !== $userRole) {
-            $appUser->update(['user_type' => $userRole]);
-        }
+        $appUser = $this->resolveLocalUser($supabaseUser);
         $localUserId = $appUser->id;
 
         // Cards studied today - combine regular flashcards and search flashcards
@@ -121,21 +108,7 @@ class DashboardController extends Controller
         }
         $userId = $supabaseUser['id'];
         // Resolve local app user id for reviews
-        $userRole = $supabaseUser['role'] ?? 'student';
-        $appUser = \App\Models\User::firstOrCreate(
-            ['email' => $supabaseUser['email']],
-            [
-                'id' => $userId,
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-                'user_type' => $userRole,
-                'password' => null,
-            ]
-        );
-
-        // Update user_type if it has changed
-        if ($appUser->user_type !== $userRole) {
-            $appUser->update(['user_type' => $userRole]);
-        }
+        $appUser = $this->resolveLocalUser($supabaseUser);
         $localUserId = $appUser->id;
         $decks = Deck::where('user_id', $userId)
             ->with(['studyMaterials.reviews' => function ($q) use ($localUserId) {
@@ -187,15 +160,7 @@ class DashboardController extends Controller
         $goal = UserGoal::where('user_id', $userId)->latest()->first();
 
         // Resolve local user ID for regular flashcard reviews
-        $appUser = \App\Models\User::firstOrCreate(
-            ['email' => $supabaseUser['email']],
-            [
-                'id' => $userId,
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
-                'user_type' => $supabaseUser['role'] ?? 'student',
-                'password' => null,
-            ]
-        );
+        $appUser = $this->resolveLocalUser($supabaseUser);
         $localUserId = $appUser->id;
 
         // Get goal type and set defaults
@@ -277,10 +242,8 @@ class DashboardController extends Controller
         if (!$supabaseUser || !isset($supabaseUser['id'])) {
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
-        // Map to local user id
-        $user = \App\Models\User::where('id', $supabaseUser['id'])
-            ->orWhere('email', $supabaseUser['email'])
-            ->first();
+        // Map to local user id without querying bigint users.id by Supabase UUID
+        $user = $this->resolveLocalUser($supabaseUser);
         if (!$user) {
             return response()->json(['achievements' => []]);
         }
@@ -316,32 +279,7 @@ class DashboardController extends Controller
         if (!$supabaseUser || !isset($supabaseUser['id'])) {
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
-        $userId = $supabaseUser['id'];
-
-        // Get user from database or create if doesn't exist
-        // First try to find by Supabase ID, then by email
-        $user = \App\Models\User::where('id', $userId)
-            ->orWhere('email', $supabaseUser['email'])
-            ->first();
-
-        if (!$user) {
-            // Create new user if none exists
-            $userRole = $supabaseUser['role'] ?? 'student';
-            $user = \App\Models\User::create([
-                'id' => $userId,
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
-                'email' => $supabaseUser['email'],
-                'user_type' => $userRole,
-                'password' => null
-            ]);
-        } else {
-            // Update existing user with latest info
-            $userRole = $supabaseUser['role'] ?? 'student';
-            $user->update([
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
-                'user_type' => $userRole
-            ]);
-        }
+        $user = $this->resolveLocalUser($supabaseUser);
 
         return response()->json([
             'id' => $user->id,
@@ -362,29 +300,7 @@ class DashboardController extends Controller
         $userId = $supabaseUser['id'];
 
         // Get user info
-        // First try to find by Supabase ID, then by email
-        $user = \App\Models\User::where('id', $userId)
-            ->orWhere('email', $supabaseUser['email'])
-            ->first();
-
-        if (!$user) {
-            // Create new user if none exists
-            $userRole = $supabaseUser['role'] ?? 'student';
-            $user = \App\Models\User::create([
-                'id' => $userId,
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
-                'email' => $supabaseUser['email'],
-                'user_type' => $userRole,
-                'password' => null
-            ]);
-        } else {
-            // Update existing user with latest info
-            $userRole = $supabaseUser['role'] ?? 'student';
-            $user->update([
-                'name' => $supabaseUser['user_metadata']['full_name'] ?? $supabaseUser['email'] ?? 'User',
-                'user_type' => $userRole
-            ]);
-        }
+        $user = $this->resolveLocalUser($supabaseUser);
 
         $today = Carbon::today();
 
@@ -550,28 +466,42 @@ class DashboardController extends Controller
             ->with('goalType')
             ->get()
             ->map(function ($userGoal) use ($cardsStudiedToday, $todayStudyTimeMinutes, $localUserId, $today) {
-                $current_value = $userGoal->current_value;
+            $goalCategory = $userGoal->goalType?->category;
+            $goalUnit = $userGoal->goalType?->unit;
+
+            // Backward compatibility for legacy goals that do not have goal_type_id.
+            if (!$goalCategory || !$goalUnit) {
+                if ($userGoal->goal_type === 'study_time') {
+                    $goalCategory = 'time';
+                    $goalUnit = 'minutes';
+                } else {
+                    $goalCategory = 'study';
+                    $goalUnit = 'cards';
+                }
+            }
+
+            $current_value = $userGoal->current_value;
 
                 // For flashcard goals, use today's studied count
                 if (
-                    $userGoal->goalType && $userGoal->goalType->category === 'study' &&
-                    $userGoal->goalType->unit === 'cards'
+                $goalCategory === 'study' &&
+                $goalUnit === 'cards'
                 ) {
                     $current_value = $cardsStudiedToday;
                 }
 
                 // For time-based goals, use today's study time in minutes
                 if (
-                    $userGoal->goalType && $userGoal->goalType->category === 'time' &&
-                    $userGoal->goalType->unit === 'minutes'
+                $goalCategory === 'time' &&
+                $goalUnit === 'minutes'
                 ) {
                     $current_value = $todayStudyTimeMinutes;
                 }
 
                 // For engagement goals, calculate based on review activity and ratings
                 if (
-                    $userGoal->goalType && $userGoal->goalType->category === 'engagement' &&
-                    $userGoal->goalType->unit === 'points'
+                $goalCategory === 'engagement' &&
+                $goalUnit === 'points'
                 ) {
                     // Calculate engagement score based on today's reviews
                     $todaysReviews = FlashcardReview::where('user_id', $localUserId)
@@ -612,22 +542,27 @@ class DashboardController extends Controller
                     $current_value = $engagementScore;
                 }
 
-                $progress_percentage = $userGoal->target_value > 0 ?
-                    round(($current_value / $userGoal->target_value) * 100) : 0;
+            $targetValue = $userGoal->target_value > 0
+                ? $userGoal->target_value
+                : ($userGoal->daily_goal ?? 0);
+
+            $progress_percentage = $targetValue > 0
+                ? round(($current_value / $targetValue) * 100)
+                : 0;
 
                 return [
                     'id' => $userGoal->id,
                     'goal_type' => [
-                        'id' => $userGoal->goalType->id,
-                        'name' => $userGoal->goalType->name,
-                        'description' => $userGoal->goalType->description,
-                        'unit' => $userGoal->goalType->unit,
-                        'category' => $userGoal->goalType->category,
+                    'id' => $userGoal->goalType?->id,
+                    'name' => $userGoal->goalType?->name ?? $userGoal->goal_type ?? 'Legacy Goal',
+                    'description' => $userGoal->goalType?->description ?? $userGoal->description,
+                    'unit' => $goalUnit,
+                    'category' => $goalCategory,
                     ],
-                    'target_value' => $userGoal->target_value,
+                'target_value' => $targetValue,
                     'current_value' => $current_value,
                     'progress_percentage' => min(100, $progress_percentage),
-                    'is_completed' => $current_value >= $userGoal->target_value,
+                'is_completed' => $targetValue > 0 && $current_value >= $targetValue,
                     'is_active' => $userGoal->is_active,
                 ];
             });
@@ -660,6 +595,58 @@ class DashboardController extends Controller
             ],
             'user_goals' => $userGoals
         ]);
+    }
+
+    private function resolveLocalUser(array $supabaseUser): User
+    {
+        $supabaseUserId = $supabaseUser['id'] ?? null;
+        $email = $supabaseUser['email'] ?? null;
+        $userRole = $supabaseUser['role'] ?? 'student';
+        $name = $supabaseUser['user_metadata']['full_name'] ?? ($email ?? 'User');
+
+        $user = null;
+
+        if (!empty($supabaseUserId)) {
+            $user = User::where('supabase_user_id', $supabaseUserId)->first();
+        }
+
+        if (!$user && !empty($email)) {
+            $user = User::where('email', $email)->first();
+        }
+
+        if (!$user) {
+            return User::create([
+                'supabase_user_id' => $supabaseUserId,
+                'name' => $name,
+                'email' => $email,
+                'user_type' => $userRole,
+                'password' => null,
+            ]);
+        }
+
+        $updateData = [];
+
+        if (!empty($supabaseUserId) && $user->supabase_user_id !== $supabaseUserId) {
+            $updateData['supabase_user_id'] = $supabaseUserId;
+        }
+
+        if (!empty($name) && $user->name !== $name) {
+            $updateData['name'] = $name;
+        }
+
+        if (!empty($userRole) && $user->user_type !== $userRole) {
+            $updateData['user_type'] = $userRole;
+        }
+
+        if (!empty($email) && $user->email !== $email) {
+            $updateData['email'] = $email;
+        }
+
+        if (!empty($updateData)) {
+            $user->update($updateData);
+        }
+
+        return $user;
     }
 
     /**

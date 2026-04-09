@@ -14,17 +14,13 @@ return new class extends Migration
         Schema::create('search_flashcard_reviews', function (Blueprint $table) {
             $table->id();
             $table->string('user_id'); // Supabase UUID
-            $table->unsignedBigInteger('search_id');
-            $table->unsignedBigInteger('flashcard_id');
-            $table->enum('rating', ['again', 'hard', 'good', 'easy']);
+            $table->foreignId('search_id')->constrained('search_flashcard_searches')->cascadeOnDelete();
+            $table->foreignId('flashcard_id')->constrained('search_flashcard_results')->cascadeOnDelete();
+            $table->string('rating');
             $table->timestamp('reviewed_at');
             $table->integer('study_time')->default(0); // in seconds
             $table->string('session_id')->nullable();
             $table->timestamps();
-
-            // Foreign key constraints
-            $table->foreign('search_id')->references('id')->on('search_flashcard_searches')->onDelete('cascade');
-            $table->foreign('flashcard_id')->references('id')->on('search_flashcard_results')->onDelete('cascade');
 
             // Indexes for performance
             $table->index(['user_id', 'session_id']);

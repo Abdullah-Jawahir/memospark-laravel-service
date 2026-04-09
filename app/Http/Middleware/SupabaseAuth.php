@@ -11,6 +11,24 @@ class SupabaseAuth
 {
   public function handle(Request $request, Closure $next)
   {
+    if (app()->environment('testing') && $request->user()) {
+      $localUser = $request->user();
+
+      $request->merge([
+        'supabase_user' => [
+          'id' => $localUser->supabase_user_id ?? (string) $localUser->id,
+          'email' => $localUser->email,
+          'user_metadata' => [
+            'full_name' => $localUser->name,
+          ],
+          'role' => $localUser->user_type,
+          'local_user' => $localUser,
+        ],
+      ]);
+
+      return $next($request);
+    }
+
     $token = $request->bearerToken();
 
     if (!$token) {

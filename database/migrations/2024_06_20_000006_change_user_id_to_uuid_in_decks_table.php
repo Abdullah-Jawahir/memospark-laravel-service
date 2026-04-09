@@ -13,9 +13,7 @@ return new class extends Migration
       $table->dropColumn('user_id');
     });
     Schema::table('decks', function (Blueprint $table) {
-      $table->uuid('user_id')->after('id');
-      // Foreign key constraint can be added if users.id is uuid
-      // $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+      $table->string('user_id')->after('id');
     });
   }
 

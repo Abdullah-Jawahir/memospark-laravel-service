@@ -17,10 +17,10 @@ return new class extends Migration
             $table->string('user_id'); // Supabase user ID
             $table->string('topic');
             $table->text('description')->nullable();
-            $table->enum('difficulty', ['beginner', 'intermediate', 'advanced'])->default('beginner');
+            $table->string('difficulty')->default('beginner');
             $table->integer('requested_count');
             $table->string('job_id')->unique(); // UUID from the job
-            $table->enum('status', ['queued', 'processing', 'completed', 'failed'])->default('queued');
+            $table->string('status')->default('queued');
             $table->text('error_message')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
@@ -35,16 +35,13 @@ return new class extends Migration
         // Table for storing generated flashcards
         Schema::create('search_flashcard_results', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('search_id');
+            $table->foreignId('search_id')->constrained('search_flashcard_searches')->cascadeOnDelete();
             $table->text('question');
             $table->text('answer');
             $table->string('type')->default('Q&A');
-            $table->enum('difficulty', ['beginner', 'intermediate', 'advanced']);
+            $table->string('difficulty');
             $table->integer('order_index'); // To maintain the order of flashcards
             $table->timestamps();
-
-            // Foreign key relationship
-            $table->foreign('search_id')->references('id')->on('search_flashcard_searches')->onDelete('cascade');
 
             // Indexes
             $table->index(['search_id', 'order_index'], 'sf_results_search_order_idx');
@@ -53,7 +50,7 @@ return new class extends Migration
         // Table for storing study sessions with these flashcards
         Schema::create('search_flashcard_study_sessions', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('search_id');
+            $table->foreignId('search_id')->constrained('search_flashcard_searches')->cascadeOnDelete();
             $table->string('user_id'); // Supabase user ID
             $table->timestamp('started_at');
             $table->timestamp('completed_at')->nullable();
@@ -64,9 +61,6 @@ return new class extends Migration
             $table->json('study_data')->nullable(); // Store additional study metrics
             $table->timestamps();
 
-            // Foreign key relationship
-            $table->foreign('search_id')->references('id')->on('search_flashcard_searches')->onDelete('cascade');
-
             // Indexes
             $table->index(['user_id', 'created_at'], 'sf_sessions_user_created_idx');
             $table->index('search_id', 'sf_sessions_search_id_idx');
@@ -75,17 +69,13 @@ return new class extends Migration
         // Table for storing individual flashcard study records
         Schema::create('search_flashcard_study_records', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('study_session_id');
-            $table->unsignedBigInteger('flashcard_id');
-            $table->enum('result', ['correct', 'incorrect', 'skipped'])->nullable();
+            $table->foreignId('study_session_id')->constrained('search_flashcard_study_sessions')->cascadeOnDelete();
+            $table->foreignId('flashcard_id')->constrained('search_flashcard_results')->cascadeOnDelete();
+            $table->string('result')->nullable();
             $table->integer('time_spent')->nullable(); // Time in seconds
             $table->integer('attempts')->default(1);
             $table->timestamp('answered_at')->nullable();
             $table->timestamps();
-
-            // Foreign key relationships
-            $table->foreign('study_session_id')->references('id')->on('search_flashcard_study_sessions')->onDelete('cascade');
-            $table->foreign('flashcard_id')->references('id')->on('search_flashcard_results')->onDelete('cascade');
 
             // Indexes
             $table->index(['study_session_id', 'flashcard_id'], 'sf_records_session_flashcard_idx');

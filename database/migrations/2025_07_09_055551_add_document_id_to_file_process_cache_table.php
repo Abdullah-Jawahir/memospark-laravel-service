@@ -12,8 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('file_process_cache', function (Blueprint $table) {
-            $table->unsignedBigInteger('document_id')->nullable()->after('difficulty');
-            $table->foreign('document_id')->references('id')->on('documents')->onDelete('cascade');
+            $table->foreignId('document_id')->nullable()->after('difficulty')->constrained('documents')->cascadeOnDelete();
 
             // Drop the old unique constraint that included card_types_hash
             $table->dropUnique('file_process_cache_unique');

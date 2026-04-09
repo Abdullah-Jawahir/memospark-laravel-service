@@ -13,13 +13,10 @@ return new class extends Migration
   {
     Schema::table('user_goals', function (Blueprint $table) {
       // Add new columns for enhanced goal system
-      $table->uuid('goal_type_id')->nullable()->after('user_id');
+      $table->foreignId('goal_type_id')->nullable()->after('user_id')->constrained('goal_types')->nullOnDelete();
       $table->integer('target_value')->default(0)->after('goal_type_id');
       $table->integer('current_value')->default(0)->after('target_value');
       $table->boolean('is_active')->default(true)->after('current_value');
-
-      // Add foreign key constraint
-      $table->foreign('goal_type_id')->references('id')->on('goal_types')->onDelete('set null');
 
       // Add indexes
       $table->index(['user_id', 'goal_type_id']);

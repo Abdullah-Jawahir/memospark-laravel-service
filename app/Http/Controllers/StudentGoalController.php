@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\GoalType;
 use App\Models\UserGoal;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class StudentGoalController extends Controller
 {
@@ -135,7 +134,6 @@ class StudentGoalController extends Controller
         try {
             // Create custom goal type
             $goalType = GoalType::create([
-                'id' => Str::uuid(),
                 'name' => $request->name . ' (Custom)',
                 'description' => $request->description,
                 'unit' => $request->unit,
