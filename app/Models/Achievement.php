@@ -16,6 +16,13 @@ class Achievement extends Model
 
     public function users()
     {
-        return $this->belongsToMany(User::class, 'user_achievements')->withTimestamps()->withPivot('achieved_at');
+        return $this->belongsToMany(
+            User::class,
+            'user_achievements',
+            'achievement_id',
+            'user_id',
+            'id',
+            'supabase_user_id'
+        )->withTimestamps()->withPivot('achieved_at');
     }
 }
