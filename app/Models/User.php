@@ -61,12 +61,19 @@ class User extends Authenticatable
 
     public function userGoals()
     {
-        return $this->hasMany(UserGoal::class);
+        return $this->hasMany(UserGoal::class, 'user_id', 'supabase_user_id');
     }
 
     public function achievements()
     {
-        return $this->belongsToMany(Achievement::class, 'user_achievements')->withTimestamps()->withPivot('achieved_at');
+        return $this->belongsToMany(
+            Achievement::class,
+            'user_achievements',
+            'user_id',
+            'achievement_id',
+            'supabase_user_id',
+            'id'
+        )->withTimestamps()->withPivot('achieved_at');
     }
 
     public function flashcardReviews()
