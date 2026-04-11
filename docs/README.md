@@ -5,11 +5,12 @@ Welcome to the MemoSpark deployment documentation. This folder contains comprehe
 ## Documentation Overview
 
 | Document | Description |
-|----------|-------------|
+| -------- | ----------- |
 | [LARAVEL_DEPLOYMENT.md](./LARAVEL_DEPLOYMENT.md) | Complete guide for deploying the Laravel backend to Railway |
 | [FASTAPI_DEPLOYMENT.md](./FASTAPI_DEPLOYMENT.md) | Guide for deploying the FastAPI service to Railway |
 | [DOCKER_CORS_SETUP.md](./DOCKER_CORS_SETUP.md) | Deep dive into Docker configuration and CORS settings |
 | [MYSQL_DATABASE_SETUP.md](./MYSQL_DATABASE_SETUP.md) | MySQL database setup and configuration on Railway |
+| [services/2026-04-11_service_gcp-cloud-run-iam-fastapi-auth.md](./services/2026-04-11_service_gcp-cloud-run-iam-fastapi-auth.md) | Laravel to FastAPI IAM-authenticated communication on Google Cloud Run |
 
 ## Quick Start
 
@@ -50,7 +51,7 @@ See: [DOCKER_CORS_SETUP.md](./DOCKER_CORS_SETUP.md)
 
 ## Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Frontend                                 │
 │                   (Vercel - React/Vite)                         │
@@ -86,7 +87,7 @@ See: [DOCKER_CORS_SETUP.md](./DOCKER_CORS_SETUP.md)
 ## Common Issues Quick Reference
 
 | Issue | Document Section |
-|-------|------------------|
+| ----- | ---------------- |
 | 502 Bad Gateway | [Docker & CORS](./DOCKER_CORS_SETUP.md#issue-502-bad-gateway) |
 | CORS errors | [Docker & CORS](./DOCKER_CORS_SETUP.md#cors-deep-dive) |
 | Database connection | [MySQL Setup](./MYSQL_DATABASE_SETUP.md#troubleshooting) |
@@ -111,6 +112,10 @@ FRONTEND_URL=https://your-frontend.vercel.app
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_KEY=...
 FASTAPI_URL=https://your-fastapi.railway.app
+FASTAPI_IAM_AUTH_ENABLED=true
+FASTAPI_IAM_AUDIENCE=
+FASTAPI_IAM_METADATA_URL=http://metadata/computeMetadata/v1/instance/service-accounts/default/identity
+FASTAPI_IAM_TOKEN_CACHE_SECONDS=3000
 ```
 
 ### FastAPI Service
