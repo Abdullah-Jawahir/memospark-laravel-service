@@ -10,6 +10,7 @@ use App\Models\StudyMaterial;
 use App\Models\FlashcardReview;
 use App\Models\UserGoal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardTest extends TestCase
 {
@@ -121,5 +122,59 @@ class DashboardTest extends TestCase
         'is_completed' => false
       ]
     ]);
+  }
+
+  public function test_dashboard_still_works_when_search_reviews_table_is_missing()
+  {
+    $user = User::factory()->create([
+      'user_type' => 'student'
+    ]);
+
+    $deck = Deck::create([
+      'user_id' => $user->id,
+      'name' => 'Fallback Deck'
+    ]);
+
+    $document = Document::create([
+      'user_id' => $user->id,
+      'deck_id' => $deck->id,
+      'original_filename' => 'fallback.pdf',
+      'storage_path' => 'fallback/path',
+      'file_type' => 'pdf',
+      'language' => 'en',
+      'status' => 'completed'
+    ]);
+
+    $studyMaterial = StudyMaterial::create([
+      'document_id' => $document->id,
+      'type' => 'flashcard',
+      'content' => 'Fallback content',
+      'metadata' => ['question' => 'Fallback question', 'answer' => 'Fallback answer']
+    ]);
+
+    FlashcardReview::create([
+      'user_id' => $user->id,
+      'study_material_id' => $studyMaterial->id,
+      'rating' => 'good',
+      'reviewed_at' => now(),
+      'study_time' => 60
+    ]);
+
+    UserGoal::create([
+      'user_id' => $user->id,
+      'daily_goal' => 10,
+      'goal_type' => 'cards_studied',
+      'description' => 'Fallback goal'
+    ]);
+
+    Schema::dropIfExists('search_flashcard_reviews');
+
+    $this->actingAs($user);
+
+    $response = $this->getJson('/api/dashboard');
+
+    $response->assertStatus(200)
+      ->assertJsonPath('metrics.cards_studied_today', 1)
+      ->assertJsonPath('todays_goal.studied', 1);
   }
 }
