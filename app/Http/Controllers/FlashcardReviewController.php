@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\FlashcardReview;
 use App\Models\StudyMaterial;
+use App\Models\User;
 
 class FlashcardReviewController extends Controller
 {
@@ -29,8 +30,13 @@ class FlashcardReviewController extends Controller
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
 
+        $localUserId = $this->resolveLocalUserId($supabaseUser);
+        if ($localUserId === null) {
+            return response()->json(['error' => 'Local user not found'], 401);
+        }
+
         $review = FlashcardReview::create([
-            'user_id' => $supabaseUser['id'],
+            'user_id' => $localUserId,
             'study_material_id' => $validated['study_material_id'],
             'rating' => $validated['rating'],
             'reviewed_at' => $validated['reviewed_at'] ?? now(),
@@ -48,8 +54,13 @@ class FlashcardReviewController extends Controller
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
 
+        $localUserId = $this->resolveLocalUserId($supabaseUser);
+        if ($localUserId === null) {
+            return response()->json(['error' => 'Local user not found'], 401);
+        }
+
         $query = FlashcardReview::with('studyMaterial')
-            ->where('user_id', $supabaseUser['id'])
+            ->where('user_id', $localUserId)
             ->whereHas('studyMaterial', function ($q) {
                 $q->where('type', 'flashcard');
             });
@@ -63,5 +74,26 @@ class FlashcardReviewController extends Controller
 
         $reviews = $query->get();
         return response()->json($reviews);
+    }
+
+    private function resolveLocalUserId(array $supabaseUser): ?int
+    {
+        if (isset($supabaseUser['local_user']) && $supabaseUser['local_user'] instanceof User) {
+            return (int) $supabaseUser['local_user']->id;
+        }
+
+        $supabaseUserId = $supabaseUser['id'] ?? null;
+        $email = $supabaseUser['email'] ?? null;
+
+        $user = null;
+        if (!empty($supabaseUserId)) {
+            $user = User::where('supabase_user_id', $supabaseUserId)->first();
+        }
+
+        if (!$user && !empty($email)) {
+            $user = User::where('email', $email)->first();
+        }
+
+        return $user ? (int) $user->id : null;
     }
 }

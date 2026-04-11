@@ -9,6 +9,8 @@ use App\Models\Document;
 use App\Models\StudyMaterial;
 use App\Models\FlashcardReview;
 use App\Models\UserGoal;
+use App\Models\Achievement;
+use App\Models\UserAchievement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 
@@ -20,18 +22,19 @@ class DashboardTest extends TestCase
   {
     // Create a test user
     $user = User::factory()->create([
-      'user_type' => 'student'
+      'user_type' => 'student',
+      'supabase_user_id' => 'f40668cd-362a-47d4-be01-f117caaf4b84'
     ]);
 
     // Create a deck for the user
     $deck = Deck::create([
-      'user_id' => $user->id,
+      'user_id' => $user->supabase_user_id,
       'name' => 'Test Deck'
     ]);
 
     // Create a document
     $document = Document::create([
-      'user_id' => $user->id,
+      'user_id' => $user->supabase_user_id,
       'deck_id' => $deck->id,
       'original_filename' => 'test.pdf',
       'storage_path' => 'test/path',
@@ -59,7 +62,7 @@ class DashboardTest extends TestCase
 
     // Create a user goal
     UserGoal::create([
-      'user_id' => $user->id,
+      'user_id' => $user->supabase_user_id,
       'daily_goal' => 50,
       'goal_type' => 'cards_studied',
       'description' => 'Study cards daily'
@@ -127,16 +130,17 @@ class DashboardTest extends TestCase
   public function test_dashboard_still_works_when_search_reviews_table_is_missing()
   {
     $user = User::factory()->create([
-      'user_type' => 'student'
+      'user_type' => 'student',
+      'supabase_user_id' => '11111111-2222-3333-4444-555555555555'
     ]);
 
     $deck = Deck::create([
-      'user_id' => $user->id,
+      'user_id' => $user->supabase_user_id,
       'name' => 'Fallback Deck'
     ]);
 
     $document = Document::create([
-      'user_id' => $user->id,
+      'user_id' => $user->supabase_user_id,
       'deck_id' => $deck->id,
       'original_filename' => 'fallback.pdf',
       'storage_path' => 'fallback/path',
@@ -161,7 +165,7 @@ class DashboardTest extends TestCase
     ]);
 
     UserGoal::create([
-      'user_id' => $user->id,
+      'user_id' => $user->supabase_user_id,
       'daily_goal' => 10,
       'goal_type' => 'cards_studied',
       'description' => 'Fallback goal'
@@ -176,5 +180,36 @@ class DashboardTest extends TestCase
     $response->assertStatus(200)
       ->assertJsonPath('metrics.cards_studied_today', 1)
       ->assertJsonPath('todays_goal.studied', 1);
+  }
+
+  public function test_dashboard_achievements_uses_supabase_user_id_for_user_achievements_table()
+  {
+    $user = User::factory()->create([
+      'user_type' => 'student',
+      'supabase_user_id' => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    ]);
+
+    $achievement = Achievement::create([
+      'name' => 'Regression Achievement',
+      'description' => 'Ensures UUID-based user_achievements lookup',
+      'icon' => 'star',
+      'criteria' => 'points',
+      'points' => 10,
+    ]);
+
+    UserAchievement::create([
+      'user_id' => $user->supabase_user_id,
+      'achievement_id' => $achievement->id,
+      'achieved_at' => now(),
+    ]);
+
+    $this->actingAs($user);
+
+    $response = $this->getJson('/api/dashboard/achievements');
+
+    $response->assertStatus(200)
+      ->assertJsonFragment([
+        'title' => 'Regression Achievement',
+      ]);
   }
 }

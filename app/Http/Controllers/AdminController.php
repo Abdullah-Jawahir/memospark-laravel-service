@@ -99,7 +99,7 @@ class AdminController extends Controller
       ->get();
 
     foreach ($recentDecks as $deck) {
-      $user = User::find($deck->user_id);
+      $user = $deck->user;
 
       // Safely handle the created_at field
       $createdAt = $deck->created_at;
@@ -225,26 +225,53 @@ class AdminController extends Controller
 
   private function getMostActiveDay()
   {
+    $driver = DB::connection()->getDriverName();
+    if ($driver === 'pgsql') {
+      $dayExpression = "TO_CHAR(reviewed_at, 'FMDay')";
+    } elseif ($driver === 'sqlite') {
+      $dayExpression = "CAST(strftime('%w', reviewed_at) AS INTEGER)";
+    } else {
+      $dayExpression = 'DAYNAME(reviewed_at)';
+    }
+
     $dayActivity = FlashcardReview::select(
-      DB::raw('DAYNAME(reviewed_at) as day'),
+      DB::raw($dayExpression . ' as day'),
       DB::raw('COUNT(*) as count')
     )
-      ->groupBy(DB::raw('DAYNAME(reviewed_at)'))
+      ->groupBy(DB::raw($dayExpression))
       ->orderBy('count', 'desc')
       ->first();
 
-    return $dayActivity ? $dayActivity->day : 'No data';
+    if (!$dayActivity) {
+      return 'No data';
+    }
+
+    if ($driver === 'sqlite') {
+      $dayMap = [
+        0 => 'Sunday',
+        1 => 'Monday',
+        2 => 'Tuesday',
+        3 => 'Wednesday',
+        4 => 'Thursday',
+        5 => 'Friday',
+        6 => 'Saturday',
+      ];
+
+      return $dayMap[(int) $dayActivity->day] ?? 'No data';
+    }
+
+    return trim((string) $dayActivity->day);
   }
 
   private function getPopularContentTypes()
   {
-    return Document::select('content_type', DB::raw('COUNT(*) as count'))
-      ->groupBy('content_type')
+    return Document::select('file_type', DB::raw('COUNT(*) as count'))
+      ->groupBy('file_type')
       ->orderBy('count', 'desc')
       ->take(5)
       ->get()
       ->mapWithKeys(function ($item) {
-        return [$item->content_type => $item->count];
+      return [$item->file_type => $item->count];
       })
       ->toArray();
   }
@@ -504,8 +531,14 @@ class AdminController extends Controller
       $totalUsersWithGoals = UserGoal::distinct('user_id')->count();
 
       // Total users without goals
-      $totalUsersWithoutGoals = User::whereNotIn('id', function ($query) {
-        $query->select('user_id')->from('user_goals')->distinct();
+      $totalUsersWithoutGoals = User::where(function ($query) {
+        $query->whereNull('supabase_user_id')
+          ->orWhereNotIn('supabase_user_id', function ($subQuery) {
+            $subQuery->select('user_id')
+              ->from('user_goals')
+              ->whereNotNull('user_id')
+              ->distinct();
+          });
       })->count();
 
       // Average daily goal
@@ -513,14 +546,14 @@ class AdminController extends Controller
 
       // Most common goal range
       $goalDistribution = UserGoal::select(
-        DB::raw('
+        DB::raw("
           CASE 
-            WHEN daily_goal <= 25 THEN "1-25"
-            WHEN daily_goal <= 50 THEN "26-50"
-            WHEN daily_goal <= 100 THEN "51-100"
-            ELSE "100+"
+            WHEN daily_goal <= 25 THEN '1-25'
+            WHEN daily_goal <= 50 THEN '26-50'
+            WHEN daily_goal <= 100 THEN '51-100'
+            ELSE '100+'
           END as goal_range
-        '),
+        "),
         DB::raw('COUNT(*) as count')
       )
         ->groupBy('goal_range')
@@ -556,7 +589,7 @@ class AdminController extends Controller
 
     try {
       // Goals by user type
-      $goalsByUserType = User::leftJoin('user_goals', 'users.id', '=', 'user_goals.user_id')
+      $goalsByUserType = User::leftJoin('user_goals', 'users.supabase_user_id', '=', 'user_goals.user_id')
         ->select(
           'users.user_type',
           DB::raw('COUNT(user_goals.id) as goals_count'),
@@ -566,8 +599,17 @@ class AdminController extends Controller
         ->get();
 
       // Goal trends over time (last 6 months)
+      $driver = DB::connection()->getDriverName();
+      if ($driver === 'pgsql') {
+        $monthExpression = "TO_CHAR(created_at, 'YYYY-MM')";
+      } elseif ($driver === 'sqlite') {
+        $monthExpression = "strftime('%Y-%m', created_at)";
+      } else {
+        $monthExpression = "DATE_FORMAT(created_at, '%Y-%m')";
+      }
+
       $goalTrends = UserGoal::select(
-        DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
+        DB::raw($monthExpression . ' as month'),
         DB::raw('COUNT(*) as goals_created'),
         DB::raw('AVG(daily_goal) as avg_goal')
       )
@@ -577,7 +619,7 @@ class AdminController extends Controller
         ->get();
 
       // Most active users (top 10 by goals set)
-      $activeUsers = User::leftJoin('user_goals', 'users.id', '=', 'user_goals.user_id')
+      $activeUsers = User::leftJoin('user_goals', 'users.supabase_user_id', '=', 'user_goals.user_id')
         ->select('users.name', 'users.email', 'user_goals.daily_goal', 'user_goals.updated_at')
         ->whereNotNull('user_goals.id')
         ->orderBy('user_goals.daily_goal', 'desc')
@@ -624,7 +666,6 @@ class AdminController extends Controller
       $adminGoalType = GoalType::firstOrCreate(
         ['name' => 'Admin Daily Flashcards'],
         [
-          'id' => \Illuminate\Support\Str::uuid(),
           'description' => 'Daily flashcard goal for admin users',
           'unit' => 'cards',
           'category' => 'study',
@@ -821,7 +862,7 @@ class AdminController extends Controller
     }
 
     try {
-      $userGoals = UserGoal::with(['user:id,name,email,user_type', 'goalType'])
+      $userGoals = UserGoal::with(['user:id,supabase_user_id,name,email,user_type', 'goalType'])
         ->whereNotNull('goal_type_id')
         ->orderBy('created_at', 'desc')
         ->get();
@@ -844,14 +885,20 @@ class AdminController extends Controller
     }
 
     $request->validate([
-      'user_id' => 'required|exists:users,id',
+      'user_id' => 'required',
       'goal_type_id' => 'required|exists:goal_types,id',
       'target_value' => 'required|integer|min:1'
     ]);
 
     try {
+      $goalOwnerId = $this->resolveGoalOwnerSupabaseId((string) $request->user_id);
+
+      if (!$goalOwnerId) {
+        return response()->json(['error' => 'User must have a valid supabase_user_id'], 422);
+      }
+
       // Check if user already has this goal type
-      $existingGoal = UserGoal::where('user_id', $request->user_id)
+      $existingGoal = UserGoal::where('user_id', $goalOwnerId)
         ->where('goal_type_id', $request->goal_type_id)
         ->first();
 
@@ -860,7 +907,7 @@ class AdminController extends Controller
       }
 
       $userGoal = UserGoal::create([
-        'user_id' => $request->user_id,
+        'user_id' => $goalOwnerId,
         'goal_type_id' => $request->goal_type_id,
         'target_value' => $request->target_value,
         'current_value' => 0,
@@ -868,7 +915,7 @@ class AdminController extends Controller
       ]);
 
       // Load relationships for response
-      $userGoal->load(['user:id,name,email,user_type', 'goalType']);
+      $userGoal->load(['user:id,supabase_user_id,name,email,user_type', 'goalType']);
 
       return response()->json($userGoal, 201);
     } catch (\Exception $e) {
@@ -898,7 +945,7 @@ class AdminController extends Controller
         'target_value' => $request->target_value
       ]);
 
-      $userGoal->load(['user:id,name,email,user_type', 'goalType']);
+      $userGoal->load(['user:id,supabase_user_id,name,email,user_type', 'goalType']);
       return response()->json($userGoal);
     } catch (\Exception $e) {
       \Illuminate\Support\Facades\Log::error('Update user goal error: ' . $e->getMessage());
@@ -925,5 +972,32 @@ class AdminController extends Controller
       \Illuminate\Support\Facades\Log::error('Delete user goal error: ' . $e->getMessage());
       return response()->json(['error' => 'Failed to delete user goal'], 500);
     }
+  }
+
+  private function resolveGoalOwnerSupabaseId(string $userIdentifier): ?string
+  {
+    $userIdentifier = trim($userIdentifier);
+
+    if ($userIdentifier === '') {
+      return null;
+    }
+
+    if (ctype_digit($userIdentifier)) {
+      $user = User::find((int) $userIdentifier);
+      return $user?->supabase_user_id;
+    }
+
+    $user = User::where('supabase_user_id', $userIdentifier)->first();
+
+    if ($user) {
+      return $user->supabase_user_id;
+    }
+
+    if (filter_var($userIdentifier, FILTER_VALIDATE_EMAIL)) {
+      $emailUser = User::where('email', $userIdentifier)->first();
+      return $emailUser?->supabase_user_id;
+    }
+
+    return null;
   }
 }
