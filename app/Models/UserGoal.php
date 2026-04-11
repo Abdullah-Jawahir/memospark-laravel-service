@@ -42,7 +42,7 @@ class UserGoal extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id', 'supabase_user_id');
     }
 
     public function goalType()
