@@ -37,6 +37,13 @@ return [
 
     'fastapi' => [
         'url' => env('FASTAPI_URL', 'http://localhost:8001'),
+        'iam_auth_enabled' => env('FASTAPI_IAM_AUTH_ENABLED', false),
+        'iam_audience' => env('FASTAPI_IAM_AUDIENCE'),
+        'iam_metadata_url' => env(
+            'FASTAPI_IAM_METADATA_URL',
+            'http://metadata/computeMetadata/v1/instance/service-accounts/default/identity'
+        ),
+        'iam_token_cache_seconds' => env('FASTAPI_IAM_TOKEN_CACHE_SECONDS', 3000),
     ],
 
     // Centralized Supabase configuration
