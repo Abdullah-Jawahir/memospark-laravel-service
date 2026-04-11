@@ -255,6 +255,7 @@ class DashboardController extends Controller
         if (!$supabaseUser || !isset($supabaseUser['id'])) {
             return response()->json(['error' => 'Supabase user not found'], 401);
         }
+        $supabaseUserId = (string) $supabaseUser['id'];
         // Map to local user id without querying bigint users.id by Supabase UUID
         $user = $this->resolveLocalUser($supabaseUser);
         if (!$user) {
@@ -262,11 +263,11 @@ class DashboardController extends Controller
         }
 
         // First ensure user has all achievements they qualify for
-        $this->ensurePointBasedAchievements($user);
+        $this->ensurePointBasedAchievements($user, $supabaseUserId);
 
         // Now get all achievements with no duplicates
         $userAchievements = Achievement::join('user_achievements', 'achievements.id', '=', 'user_achievements.achievement_id')
-            ->where('user_achievements.user_id', $user->id)
+            ->where('user_achievements.user_id', $supabaseUserId)
             ->orderByDesc('user_achievements.achieved_at')
             ->get(['achievements.*', 'user_achievements.achieved_at', 'user_achievements.id as ua_id']);
 
@@ -684,8 +685,12 @@ class DashboardController extends Controller
      * @param \App\Models\User $user
      * @return void
      */
-    private function ensurePointBasedAchievements($user)
+    private function ensurePointBasedAchievements(User $user, string $achievementUserId): void
     {
+        if ($achievementUserId === '') {
+            return;
+        }
+
         $points = $user->points ?? 0;
 
         // Define point thresholds for achievements
@@ -756,14 +761,14 @@ class DashboardController extends Controller
                 }
 
                 // Check if user has already been assigned this achievement
-                $userHasAchievement = UserAchievement::where('user_id', $user->id)
+                $userHasAchievement = UserAchievement::where('user_id', $achievementUserId)
                     ->where('achievement_id', $achievement->id)
                     ->exists();
 
                 if (!$userHasAchievement) {
                     // Create record in user_achievements table
                     UserAchievement::create([
-                        'user_id' => $user->id,
+                        'user_id' => $achievementUserId,
                         'achievement_id' => $achievement->id,
                         'achieved_at' => now()
                     ]);
