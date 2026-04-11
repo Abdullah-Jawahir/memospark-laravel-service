@@ -11,9 +11,9 @@ return new class extends Migration
     Schema::create('study_materials', function (Blueprint $table) {
       $table->id();
       $table->foreignId('document_id')->constrained();
-      $table->enum('type', ['flashcard', 'quiz', 'exercise']); // 'flashcard' for Q&A, 'quiz' for quizzes
+      $table->string('type'); // 'flashcard' for Q&A, 'quiz' for quizzes
       $table->json('content'); // Store question, answer, options, difficulty, etc.
-      $table->enum('language', ['en', 'si', 'ta']);
+      $table->string('language')->default('en');
       $table->timestamps();
     });
   }

@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 return new class extends Migration
 {
@@ -14,11 +13,11 @@ return new class extends Migration
   public function up(): void
   {
     Schema::create('goal_types', function (Blueprint $table) {
-      $table->uuid('id')->primary();
+      $table->id();
       $table->string('name');
       $table->text('description')->nullable();
       $table->string('unit'); // e.g., 'cards', 'minutes', 'points'
-      $table->enum('category', ['study', 'engagement', 'achievement', 'time']);
+      $table->string('category');
       $table->boolean('is_active')->default(true);
       $table->integer('default_value')->default(0);
       $table->integer('min_value')->default(0);
@@ -32,7 +31,6 @@ return new class extends Migration
     // Insert default goal types
     DB::table('goal_types')->insert([
       [
-        'id' => Str::uuid(),
         'name' => 'Daily Flashcards',
         'description' => 'Number of flashcards to review daily',
         'unit' => 'cards',
@@ -45,7 +43,6 @@ return new class extends Migration
         'updated_at' => now()
       ],
       [
-        'id' => Str::uuid(),
         'name' => 'Study Time',
         'description' => 'Daily study time goal in minutes',
         'unit' => 'minutes',
@@ -58,7 +55,6 @@ return new class extends Migration
         'updated_at' => now()
       ],
       [
-        'id' => Str::uuid(),
         'name' => 'Weekly Achievements',
         'description' => 'Number of achievements to unlock per week',
         'unit' => 'achievements',
@@ -71,7 +67,6 @@ return new class extends Migration
         'updated_at' => now()
       ],
       [
-        'id' => Str::uuid(),
         'name' => 'Engagement Score',
         'description' => 'Daily platform engagement score',
         'unit' => 'points',

@@ -98,7 +98,10 @@ class SearchFlashcardSearch extends Model
      */
     public function hasBeenStudied(): bool
     {
-        return $this->studySessions()->exists();
+        return $this->studySessions()->exists()
+            || SearchFlashcardReview::where('search_id', $this->id)
+                ->where('user_id', $this->user_id)
+                ->exists();
     }
 
     /**
@@ -107,29 +110,71 @@ class SearchFlashcardSearch extends Model
     public function getStudyStatsAttribute(): array
     {
         $sessions = $this->studySessions;
+        $totalFlashcards = $this->flashcards_count;
+        $reviewsQuery = SearchFlashcardReview::where('search_id', $this->id)
+            ->where('user_id', $this->user_id);
 
-        if ($sessions->isEmpty()) {
+        $reviewedFlashcards = (clone $reviewsQuery)
+            ->distinct()
+            ->count('flashcard_id');
+
+        $latestReviews = collect();
+        if ($reviewedFlashcards > 0) {
+            $latestReviews = (clone $reviewsQuery)
+                ->whereRaw('id IN (
+                    SELECT MAX(id) FROM search_flashcard_reviews
+                    WHERE user_id = ? AND search_id = ?
+                    GROUP BY flashcard_id
+                )', [$this->user_id, $this->id])
+                ->get(['rating']);
+        }
+
+        if ($sessions->isEmpty() && $reviewedFlashcards === 0) {
             return [
                 'total_sessions' => 0,
                 'total_studied' => 0,
                 'total_correct' => 0,
                 'total_incorrect' => 0,
-                'average_score' => 0
+                'average_score' => 0,
+                'completion_percentage' => 0,
+                'total_flashcards' => $totalFlashcards,
+                'reviewed_flashcards' => 0,
+                'mastered_flashcards' => 0,
+                'needs_review_count' => 0,
             ];
         }
 
-        $totalStudied = $sessions->sum('studied_flashcards');
-        $totalCorrect = $sessions->sum('correct_answers');
-        $totalIncorrect = $sessions->sum('incorrect_answers');
+        if ($reviewedFlashcards > 0) {
+            $totalStudied = $reviewedFlashcards;
+            $totalCorrect = $latestReviews->whereIn('rating', ['good', 'easy'])->count();
+            $totalIncorrect = $latestReviews->whereIn('rating', ['again', 'hard'])->count();
+        } else {
+            $latestSession = $sessions->sortByDesc('started_at')->first();
+            $totalStudied = (int) ($latestSession->studied_flashcards ?? 0);
+            $totalCorrect = (int) ($latestSession->correct_answers ?? 0);
+            $totalIncorrect = (int) ($latestSession->incorrect_answers ?? 0);
+        }
 
         $averageScore = $totalStudied > 0 ? round(($totalCorrect / $totalStudied) * 100, 2) : 0;
+        $completionPercentage = $totalFlashcards > 0
+            ? round(min(100, ($totalStudied / $totalFlashcards) * 100), 2)
+            : 0;
+        $reviewSessionCount = (clone $reviewsQuery)
+            ->whereNotNull('session_id')
+            ->distinct()
+            ->count('session_id');
 
         return [
-            'total_sessions' => $sessions->count(),
+            'total_sessions' => max($sessions->count(), $reviewSessionCount),
             'total_studied' => $totalStudied,
             'total_correct' => $totalCorrect,
             'total_incorrect' => $totalIncorrect,
-            'average_score' => $averageScore
+            'average_score' => $averageScore,
+            'completion_percentage' => $completionPercentage,
+            'total_flashcards' => $totalFlashcards,
+            'reviewed_flashcards' => $totalStudied,
+            'mastered_flashcards' => $totalCorrect,
+            'needs_review_count' => $totalIncorrect,
         ];
     }
 }

@@ -13,6 +13,15 @@ return new class extends Migration
      */
     public function up(): void
     {
+        $driver = DB::getDriverName();
+        $emojiHex = [
+            '🎯' => 'F09F8EAF',
+            '🚀' => 'F09F9A80',
+            '🧠' => 'F09FA7A0',
+            '🏆' => 'F09F8F86',
+            '🥇' => 'F09FA587',
+        ];
+
         // Fix all achievement data based on the correct information from DashboardController
         $achievementsData = [
             'Study Streak' => [
@@ -69,6 +78,27 @@ return new class extends Migration
             $achievement = Achievement::where('name', $name)->first();
 
             if ($achievement) {
+                if ($driver === 'pgsql' && isset($emojiHex[$data['icon']])) {
+                    DB::statement(
+                        "UPDATE achievements
+                         SET description = ?,
+                             icon = convert_from(decode('{$emojiHex[$data['icon']]}', 'hex'), 'UTF8'),
+                             criteria = ?,
+                             points = ?,
+                             updated_at = ?
+                         WHERE id = ?",
+                        [
+                            $data['description'],
+                            $data['criteria'],
+                            $data['points'],
+                            now(),
+                            $achievement->id,
+                        ]
+                    );
+
+                    continue;
+                }
+
                 $achievement->description = $data['description'];
                 $achievement->icon = $data['icon'];
                 $achievement->criteria = $data['criteria'];

@@ -39,7 +39,7 @@ class SearchFlashcardsController extends Controller
         'topic' => 'required|string|min:3|max:255',
         'description' => 'nullable|string|max:1000',
         'difficulty' => 'nullable|string|in:beginner,intermediate,advanced',
-        'count' => 'nullable|integer|min:1|max:20',
+        'count' => 'nullable|integer|min:1|max:25',
       ]);
 
       if ($validator->fails()) {
@@ -53,7 +53,10 @@ class SearchFlashcardsController extends Controller
       $topic = $request->input('topic');
       $description = $request->input('description');
       $difficulty = $request->input('difficulty', 'beginner');
-      $count = $request->input('count', 10);
+      $count = $this->resolveFlashcardCount(
+        $difficulty,
+        $request->input('count')
+      );
       $supabaseUser = $request->get('supabase_user');
       $userId = $supabaseUser && isset($supabaseUser['id']) ? $supabaseUser['id'] : null; // Get authenticated user ID if available
 
@@ -1205,5 +1208,20 @@ class SearchFlashcardsController extends Controller
         'error' => $e->getMessage()
       ], 500);
     }
+  }
+
+  private function resolveFlashcardCount(string $difficulty, mixed $count): int
+  {
+    $defaults = [
+      'beginner' => 10,
+      'intermediate' => 15,
+      'advanced' => 25,
+    ];
+
+    if ($count === null || $count === '') {
+      return $defaults[$difficulty] ?? 10;
+    }
+
+    return max(1, min(25, (int) $count));
   }
 }

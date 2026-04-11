@@ -2,17 +2,30 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class FastApiService
 {
   protected $baseUrl;
+  protected $iamAuthEnabled;
+  protected $iamAudience;
+  protected $metadataIdentityUrl;
+  protected $iamTokenCacheSeconds;
 
   public function __construct()
   {
-    $this->baseUrl = config('services.fastapi.url', 'http://localhost:8001');
+    $this->baseUrl = rtrim(config('services.fastapi.url', 'http://localhost:8001'), '/');
+    $this->iamAuthEnabled = (bool) config('services.fastapi.iam_auth_enabled', false);
+    $this->iamAudience = rtrim((string) (config('services.fastapi.iam_audience') ?: $this->baseUrl), '/');
+    $this->metadataIdentityUrl = config(
+      'services.fastapi.iam_metadata_url',
+      'http://metadata/computeMetadata/v1/instance/service-accounts/default/identity'
+    );
+    $this->iamTokenCacheSeconds = (int) config('services.fastapi.iam_token_cache_seconds', 3000);
   }
 
   /**
@@ -50,11 +63,12 @@ class FastApiService
       Log::channel('fastapi')->info('Preparing to send request to FastAPI', [
         'url' => "{$this->baseUrl}/api/v1/process-file",
         'form_data' => $formData,
-        'file_attached' => $file->getClientOriginalName()
+        'file_attached' => $file->getClientOriginalName(),
+        'iam_auth_enabled' => $this->shouldUseIamAuth(),
       ]);
 
       // Send request to FastAPI
-      $response = Http::timeout(500)
+      $response = $this->fastApiClient(500)
         ->asMultipart()
         ->attach(
           'file',
@@ -128,11 +142,12 @@ class FastApiService
 
       Log::channel('fastapi')->info('Preparing to send request to FastAPI', [
         'url' => "{$this->baseUrl}/api/v1/search-flashcards",
-        'request_data' => $requestData
+        'request_data' => $requestData,
+        'iam_auth_enabled' => $this->shouldUseIamAuth(),
       ]);
 
       // Send request to FastAPI
-      $response = Http::timeout(300) // 5 minutes timeout for flashcard generation
+      $response = $this->fastApiClient(300) // 5 minutes timeout for flashcard generation
         ->asJson()
         ->post("{$this->baseUrl}/api/v1/search-flashcards", $requestData);
 
@@ -178,7 +193,7 @@ class FastApiService
     try {
       Log::channel('fastapi')->info('getSuggestedTopics called');
 
-      $response = Http::timeout(30)
+      $response = $this->fastApiClient(30)
         ->get("{$this->baseUrl}/api/v1/search-flashcards/topics");
 
       Log::channel('fastapi')->info('FastAPI suggested topics response received', [
@@ -221,7 +236,7 @@ class FastApiService
     try {
       Log::channel('fastapi')->info('checkSearchFlashcardsHealth called');
 
-      $response = Http::timeout(30)
+      $response = $this->fastApiClient(30)
         ->get("{$this->baseUrl}/api/v1/search-flashcards/health");
 
       Log::channel('fastapi')->info('FastAPI health check response received', [
@@ -251,5 +266,71 @@ class FastApiService
       ]);
       throw new \Exception('FastApiService exception: ' . $errorMsg, 0, $e);
     }
+  }
+
+  /**
+   * Build the HTTP client for FastAPI calls.
+   */
+  protected function fastApiClient(int $timeout): PendingRequest
+  {
+    $client = Http::timeout($timeout);
+
+    if (!$this->shouldUseIamAuth()) {
+      return $client;
+    }
+
+    return $client->withToken($this->getIdentityToken());
+  }
+
+  /**
+   * Determine whether FastAPI calls must include a Cloud Run IAM identity token.
+   */
+  protected function shouldUseIamAuth(): bool
+  {
+    if (!$this->iamAuthEnabled) {
+      return false;
+    }
+
+    return str_starts_with($this->baseUrl, 'https://');
+  }
+
+  /**
+   * Fetch and cache a Google identity token for FastAPI audience.
+   *
+   * @throws \Exception
+   */
+  protected function getIdentityToken(): string
+  {
+    if ($this->iamAudience === '') {
+      throw new \Exception('FastAPI IAM audience is empty.');
+    }
+
+    $cacheKey = 'fastapi:iam_token:' . md5($this->iamAudience);
+
+    return Cache::remember($cacheKey, now()->addSeconds($this->iamTokenCacheSeconds), function () {
+      $response = Http::timeout(10)
+        ->retry(2, 200)
+        ->withHeaders(['Metadata-Flavor' => 'Google'])
+        ->get($this->metadataIdentityUrl, [
+          'audience' => $this->iamAudience,
+          'format' => 'full',
+        ]);
+
+      if ($response->failed()) {
+        $message = 'Unable to fetch FastAPI IAM identity token: HTTP ' . $response->status() . ' - ' . $response->body();
+        Log::channel('fastapi')->error($message);
+        throw new \Exception($message);
+      }
+
+      $token = trim($response->body());
+
+      if ($token === '') {
+        $message = 'Unable to fetch FastAPI IAM identity token: empty response from metadata server.';
+        Log::channel('fastapi')->error($message);
+        throw new \Exception($message);
+      }
+
+      return $token;
+    });
   }
 }

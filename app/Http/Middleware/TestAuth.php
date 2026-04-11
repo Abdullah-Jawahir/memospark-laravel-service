@@ -29,19 +29,7 @@ class TestAuth
         ]
       ];
 
-      // Try to find or create a test user in the local database
-      $localUser = User::where('email', $mockUserData['email'])->first();
-
-      if (!$localUser) {
-        // Create a test user
-        $localUser = User::create([
-          'supabase_user_id' => $testUserId,
-          'name' => $mockUserData['user_metadata']['full_name'],
-          'email' => $mockUserData['email'],
-          'user_type' => 'student',
-          'password' => null,
-        ]);
-      }
+      $localUser = $this->resolveLocalUser($mockUserData);
 
       // Prepare user data for the request (same structure as SupabaseAuth)
       $supabaseUser = [
@@ -58,5 +46,44 @@ class TestAuth
     }
 
     return response()->json(['message' => 'Invalid test token'], 401);
+  }
+
+  private function resolveLocalUser(array $mockUserData): User
+  {
+    $localUser = User::where('supabase_user_id', $mockUserData['id'])->first();
+
+    if (!$localUser) {
+      $localUser = User::where('email', $mockUserData['email'])->first();
+    }
+
+    if (!$localUser) {
+      return User::create([
+        'supabase_user_id' => $mockUserData['id'],
+        'name' => $mockUserData['user_metadata']['full_name'],
+        'email' => $mockUserData['email'],
+        'user_type' => 'student',
+        'password' => null,
+      ]);
+    }
+
+    $updates = [];
+
+    if ($localUser->supabase_user_id !== $mockUserData['id']) {
+      $updates['supabase_user_id'] = $mockUserData['id'];
+    }
+
+    if ($localUser->name !== $mockUserData['user_metadata']['full_name']) {
+      $updates['name'] = $mockUserData['user_metadata']['full_name'];
+    }
+
+    if ($localUser->email !== $mockUserData['email']) {
+      $updates['email'] = $mockUserData['email'];
+    }
+
+    if (!empty($updates)) {
+      $localUser->update($updates);
+    }
+
+    return $localUser;
   }
 }

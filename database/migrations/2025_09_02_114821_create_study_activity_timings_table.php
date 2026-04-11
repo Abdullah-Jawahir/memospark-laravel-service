@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('study_activity_timings', function (Blueprint $table) {
             $table->id();
             $table->string('session_id')->index();
-            $table->enum('activity_type', ['flashcard', 'quiz', 'exercise']);
+            $table->string('activity_type');
             $table->timestamp('start_time');
             $table->timestamp('end_time')->nullable();
             $table->integer('duration_seconds');

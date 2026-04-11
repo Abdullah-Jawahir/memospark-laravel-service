@@ -13,7 +13,7 @@ return new class extends Migration
       $table->dropColumn('user_id');
     });
     Schema::table('user_goals', function (Blueprint $table) {
-      $table->uuid('user_id')->after('id');
+      $table->string('user_id')->after('id');
     });
   }
 

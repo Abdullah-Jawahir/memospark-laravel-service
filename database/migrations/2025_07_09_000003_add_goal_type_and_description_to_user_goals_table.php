@@ -12,7 +12,7 @@ return new class extends Migration
   public function up(): void
   {
     Schema::table('user_goals', function (Blueprint $table) {
-      $table->enum('goal_type', ['cards_studied', 'study_time', 'decks_completed'])->default('cards_studied')->after('daily_goal');
+      $table->string('goal_type')->default('cards_studied')->after('daily_goal');
       $table->string('description')->nullable()->after('goal_type');
     });
   }

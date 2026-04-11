@@ -11,6 +11,24 @@ class SupabaseAuth
 {
   public function handle(Request $request, Closure $next)
   {
+    if (app()->environment('testing') && $request->user()) {
+      $localUser = $request->user();
+
+      $request->merge([
+        'supabase_user' => [
+          'id' => $localUser->supabase_user_id ?? (string) $localUser->id,
+          'email' => $localUser->email,
+          'user_metadata' => [
+            'full_name' => $localUser->name,
+          ],
+          'role' => $localUser->user_type,
+          'local_user' => $localUser,
+        ],
+      ]);
+
+      return $next($request);
+    }
+
     $token = $request->bearerToken();
 
     if (!$token) {
@@ -27,7 +45,6 @@ class SupabaseAuth
       if ($response->successful()) {
         $userData = $response->json();
 
-        // Get or create user in our local database
         $email = $userData['email'] ?? null;
         $userId = $userData['id'] ?? null;
 
@@ -35,22 +52,7 @@ class SupabaseAuth
           return response()->json(['message' => 'Invalid user data from Supabase'], 401);
         }
 
-        // Find or create user in our local database
-        $localUser = User::where('email', $email)->first();
-
-        if (!$localUser) {
-          // Create new user with default student role
-          $localUser = User::create([
-            'supabase_user_id' => $userId,
-            'name' => $userData['user_metadata']['full_name'] ?? $email,
-            'email' => $email,
-            'user_type' => 'student', // Default to student
-            'password' => null,
-          ]);
-        } else if (!$localUser->supabase_user_id || $localUser->supabase_user_id === 'admin-supabase-id-placeholder') {
-          // Update existing user with supabase_user_id if missing or is placeholder
-          $localUser->update(['supabase_user_id' => $userId]);
-        }
+        $localUser = $this->resolveLocalUser($userData);
 
         // Prepare user data for the request
         $supabaseUser = [
@@ -70,5 +72,52 @@ class SupabaseAuth
     } catch (\Exception $e) {
       return response()->json(['message' => 'Authentication failed: ' . $e->getMessage()], 401);
     }
+  }
+
+  private function resolveLocalUser(array $userData): User
+  {
+    $email = $userData['email'] ?? null;
+    $supabaseUserId = $userData['id'] ?? null;
+    $name = $userData['user_metadata']['full_name'] ?? $email;
+
+    $localUser = null;
+
+    if (!empty($supabaseUserId)) {
+      $localUser = User::where('supabase_user_id', $supabaseUserId)->first();
+    }
+
+    if (!$localUser && !empty($email)) {
+      $localUser = User::where('email', $email)->first();
+    }
+
+    if (!$localUser) {
+      return User::create([
+        'supabase_user_id' => $supabaseUserId,
+        'name' => $name,
+        'email' => $email,
+        'user_type' => 'student',
+        'password' => null,
+      ]);
+    }
+
+    $updates = [];
+
+    if (!empty($supabaseUserId) && $localUser->supabase_user_id !== $supabaseUserId) {
+      $updates['supabase_user_id'] = $supabaseUserId;
+    }
+
+    if (!empty($name) && $localUser->name !== $name) {
+      $updates['name'] = $name;
+    }
+
+    if (!empty($email) && $localUser->email !== $email) {
+      $updates['email'] = $email;
+    }
+
+    if (!empty($updates)) {
+      $localUser->update($updates);
+    }
+
+    return $localUser;
   }
 }

@@ -192,7 +192,7 @@ class StudyTrackingController extends Controller
   public function startSession(Request $request)
   {
     $request->validate([
-      'deck_id' => 'required|exists:decks,id',
+      'deck_id' => 'required',
     ]);
 
     $supabaseUser = $request->get('supabase_user');
@@ -215,8 +215,10 @@ class StudyTrackingController extends Controller
     }
     $userId = $appUser->id;
 
-    // Verify the deck belongs to this user
-    $deck = Deck::with(['user'])->find($request->deck_id);
+    $deck = $this->resolveDeckForSupabaseUser(
+      $request->input('deck_id'),
+      $supabaseUser['id'] ?? null
+    );
 
     if (!$deck) {
       return response()->json(['error' => 'Deck not found or access denied'], 404);
@@ -235,6 +237,40 @@ class StudyTrackingController extends Controller
         'total_cards' => $deck->studyMaterials->where('type', 'flashcard')->count(),
       ]
     ]);
+  }
+
+  /**
+   * Resolve a deck identifier safely for the authenticated Supabase user.
+   */
+  private function resolveDeckForSupabaseUser(mixed $deckIdentifier, ?string $supabaseUserId): ?Deck
+  {
+    if (!$supabaseUserId) {
+      return null;
+    }
+
+    $normalizedIdentifier = is_string($deckIdentifier)
+      ? trim($deckIdentifier)
+      : $deckIdentifier;
+
+    if ($normalizedIdentifier === null || $normalizedIdentifier === '') {
+      return null;
+    }
+
+    if (is_string($normalizedIdentifier) && in_array($normalizedIdentifier, [
+      'default-deck',
+      'local-generated',
+      'enriched-generated',
+    ], true)) {
+      return null;
+    }
+
+    $query = Deck::with(['user', 'studyMaterials'])->where('user_id', $supabaseUserId);
+
+    if (is_numeric($normalizedIdentifier)) {
+      return (clone $query)->whereKey((int) $normalizedIdentifier)->first();
+    }
+
+    return (clone $query)->where('name', $normalizedIdentifier)->first();
   }
 
   /**

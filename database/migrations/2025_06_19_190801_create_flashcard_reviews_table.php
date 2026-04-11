@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->foreignId('study_material_id')->constrained()->onDelete('cascade');
-            $table->enum('rating', ['again', 'hard', 'good', 'easy']);
+            $table->string('rating');
             $table->timestamp('reviewed_at');
             $table->string('session_id')->nullable();
             $table->timestamps();

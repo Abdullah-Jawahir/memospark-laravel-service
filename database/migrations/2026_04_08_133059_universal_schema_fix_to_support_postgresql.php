@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Universal migration — safe to run on both MySQL (local) and PostgreSQL (Supabase/Cloud Run).
@@ -26,7 +25,7 @@ return new class extends Migration
         // ── 2. goal_types ─────────────────────────────────────
         if (!Schema::hasTable('goal_types')) {
             Schema::create('goal_types', function (Blueprint $table) {
-                $table->uuid('id')->primary();
+                $table->id();
                 $table->string('name');
                 $table->text('description')->nullable();
                 $table->string('unit');
@@ -44,7 +43,6 @@ return new class extends Migration
             // Seed default goal types
             DB::table('goal_types')->insert([
                 [
-                    'id'            => (string) Str::uuid(),
                     'name'          => 'Daily Flashcards',
                     'description'   => 'Number of flashcards to review daily',
                     'unit'          => 'cards',
@@ -57,7 +55,6 @@ return new class extends Migration
                     'updated_at'    => now(),
                 ],
                 [
-                    'id'            => (string) Str::uuid(),
                     'name'          => 'Study Time',
                     'description'   => 'Daily study time goal in minutes',
                     'unit'          => 'minutes',
@@ -70,7 +67,6 @@ return new class extends Migration
                     'updated_at'    => now(),
                 ],
                 [
-                    'id'            => (string) Str::uuid(),
                     'name'          => 'Weekly Achievements',
                     'description'   => 'Number of achievements to unlock per week',
                     'unit'          => 'achievements',
@@ -83,7 +79,6 @@ return new class extends Migration
                     'updated_at'    => now(),
                 ],
                 [
-                    'id'            => (string) Str::uuid(),
                     'name'          => 'Engagement Score',
                     'description'   => 'Daily platform engagement score',
                     'unit'          => 'points',
@@ -101,9 +96,7 @@ return new class extends Migration
         // ── 3. user_goals — add missing columns ───────────────
         Schema::table('user_goals', function (Blueprint $table) {
             if (!Schema::hasColumn('user_goals', 'goal_type_id')) {
-                $table->uuid('goal_type_id')->nullable()->after('user_id');
-                $table->foreign('goal_type_id', 'fk_user_goals_goal_type_id')
-                    ->references('id')->on('goal_types')->onDelete('set null');
+                $table->foreignId('goal_type_id')->nullable()->after('user_id')->constrained('goal_types')->nullOnDelete();
                 $table->index(['user_id', 'goal_type_id'], 'idx_ug_user_goal_type');
             }
             if (!Schema::hasColumn('user_goals', 'target_value')) {
@@ -144,16 +137,13 @@ return new class extends Migration
         if (!Schema::hasTable('search_flashcard_results')) {
             Schema::create('search_flashcard_results', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('search_id');
+                $table->foreignId('search_id')->constrained('search_flashcard_searches')->cascadeOnDelete();
                 $table->text('question');
                 $table->text('answer');
                 $table->string('type')->default('Q&A');
                 $table->string('difficulty');
                 $table->integer('order_index');
                 $table->timestamps();
-
-                $table->foreign('search_id', 'fk_sfresults_search')
-                    ->references('id')->on('search_flashcard_searches')->onDelete('cascade');
                 $table->index(['search_id', 'order_index'], 'sf_results_search_order_idx');
             });
         }
@@ -162,7 +152,7 @@ return new class extends Migration
         if (!Schema::hasTable('search_flashcard_study_sessions')) {
             Schema::create('search_flashcard_study_sessions', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('search_id');
+                $table->foreignId('search_id')->constrained('search_flashcard_searches')->cascadeOnDelete();
                 $table->string('user_id');
                 $table->timestamp('started_at');
                 $table->timestamp('completed_at')->nullable();
@@ -172,9 +162,6 @@ return new class extends Migration
                 $table->integer('incorrect_answers')->default(0);
                 $table->json('study_data')->nullable();
                 $table->timestamps();
-
-                $table->foreign('search_id', 'fk_sfss_search')
-                    ->references('id')->on('search_flashcard_searches')->onDelete('cascade');
                 $table->index(['user_id', 'created_at'], 'sf_sessions_user_created_idx');
                 $table->index('search_id',               'sf_sessions_search_id_idx');
             });
@@ -184,18 +171,13 @@ return new class extends Migration
         if (!Schema::hasTable('search_flashcard_study_records')) {
             Schema::create('search_flashcard_study_records', function (Blueprint $table) {
                 $table->id();
-                $table->unsignedBigInteger('study_session_id');
-                $table->unsignedBigInteger('flashcard_id');
+                $table->foreignId('study_session_id')->constrained('search_flashcard_study_sessions')->cascadeOnDelete();
+                $table->foreignId('flashcard_id')->constrained('search_flashcard_results')->cascadeOnDelete();
                 $table->string('result')->nullable();
                 $table->integer('time_spent')->nullable();
                 $table->integer('attempts')->default(1);
                 $table->timestamp('answered_at')->nullable();
                 $table->timestamps();
-
-                $table->foreign('study_session_id', 'fk_sfsr_session')
-                    ->references('id')->on('search_flashcard_study_sessions')->onDelete('cascade');
-                $table->foreign('flashcard_id', 'fk_sfsr_flashcard')
-                    ->references('id')->on('search_flashcard_results')->onDelete('cascade');
                 $table->index(['study_session_id', 'flashcard_id'], 'sf_records_session_flashcard_idx');
                 $table->index('flashcard_id',                        'sf_records_flashcard_idx');
             });
@@ -206,18 +188,13 @@ return new class extends Migration
             Schema::create('search_flashcard_reviews', function (Blueprint $table) {
                 $table->id();
                 $table->string('user_id');
-                $table->unsignedBigInteger('search_id');
-                $table->unsignedBigInteger('flashcard_id');
+                $table->foreignId('search_id')->constrained('search_flashcard_searches')->cascadeOnDelete();
+                $table->foreignId('flashcard_id')->constrained('search_flashcard_results')->cascadeOnDelete();
                 $table->string('rating');
                 $table->timestamp('reviewed_at');
                 $table->integer('study_time')->default(0);
                 $table->string('session_id')->nullable();
                 $table->timestamps();
-
-                $table->foreign('search_id', 'fk_sfreview_search')
-                    ->references('id')->on('search_flashcard_searches')->onDelete('cascade');
-                $table->foreign('flashcard_id', 'fk_sfreview_flashcard')
-                    ->references('id')->on('search_flashcard_results')->onDelete('cascade');
                 $table->index(['user_id', 'session_id'],  'idx_sfreviews_user_session');
                 $table->index(['user_id', 'search_id'],   'idx_sfreviews_user_search');
                 $table->index(['flashcard_id', 'user_id'], 'idx_sfreviews_flashcard_user');
@@ -255,18 +232,50 @@ return new class extends Migration
         Schema::dropIfExists('search_flashcard_searches');
         Schema::dropIfExists('study_activity_timings');
 
-        Schema::table('user_goals', function (Blueprint $table) {
-            $table->dropForeign('fk_user_goals_goal_type_id');
-            $table->dropIndex('idx_ug_user_goal_type');
-            $table->dropIndex('idx_ug_user_active');
-            $table->dropColumn(['goal_type_id', 'target_value', 'current_value', 'is_active']);
-        });
+        if (Schema::hasTable('user_goals')) {
+            Schema::table('user_goals', function (Blueprint $table) {
+                if (Schema::hasColumn('user_goals', 'goal_type_id')) {
+                    $foreignKeyName = 'user_goals_goal_type_id_foreign';
+
+                    if (Schema::hasIndex('user_goals', $foreignKeyName)) {
+                        $table->dropForeign($foreignKeyName);
+                    }
+
+                    if (Schema::hasIndex('user_goals', 'idx_ug_user_goal_type')) {
+                        $table->dropIndex('idx_ug_user_goal_type');
+                    }
+                }
+
+                if (Schema::hasColumn('user_goals', 'is_active') && Schema::hasIndex('user_goals', 'idx_ug_user_active')) {
+                    $table->dropIndex('idx_ug_user_active');
+                }
+
+                $columnsToDrop = [];
+
+                foreach (['goal_type_id', 'target_value', 'current_value', 'is_active'] as $column) {
+                    if (Schema::hasColumn('user_goals', $column)) {
+                        $columnsToDrop[] = $column;
+                    }
+                }
+
+                if ($columnsToDrop !== []) {
+                    $table->dropColumn($columnsToDrop);
+                }
+            });
+        }
 
         Schema::dropIfExists('goal_types');
 
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropIndex('idx_users_supabase_user_id');
-            $table->dropColumn('supabase_user_id');
-        });
+        if (Schema::hasTable('users')) {
+            Schema::table('users', function (Blueprint $table) {
+                if (Schema::hasIndex('users', 'idx_users_supabase_user_id')) {
+                    $table->dropIndex('idx_users_supabase_user_id');
+                }
+
+                if (Schema::hasColumn('users', 'supabase_user_id')) {
+                    $table->dropColumn('supabase_user_id');
+                }
+            });
+        }
     }
 };

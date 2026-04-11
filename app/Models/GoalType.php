@@ -4,14 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 
 class GoalType extends Model
 {
   use HasFactory;
 
   protected $fillable = [
-    'id',
     'name',
     'description',
     'unit',
@@ -28,19 +26,6 @@ class GoalType extends Model
     'min_value' => 'integer',
     'max_value' => 'integer'
   ];
-
-  protected $keyType = 'string';
-  public $incrementing = false;
-
-  protected static function boot()
-  {
-    parent::boot();
-    static::creating(function ($model) {
-      if (!$model->id) {
-        $model->id = (string) Str::uuid();
-      }
-    });
-  }
 
   public function userGoals()
   {
