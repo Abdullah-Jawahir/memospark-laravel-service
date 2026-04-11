@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('supabase_user_id')->nullable()->unique()->after('id');
-        });
+        if (!Schema::hasColumn('users', 'supabase_user_id')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->string('supabase_user_id')->nullable()->unique()->after('id');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('supabase_user_id');
-        });
+        if (Schema::hasColumn('users', 'supabase_user_id')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('supabase_user_id');
+            });
+        }
     }
 };

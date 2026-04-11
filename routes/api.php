@@ -150,6 +150,15 @@ Route::get('test-auth', function () {
   return response()->json(['message' => 'Public endpoint working']);
 });
 
+// Public ping endpoint for lightweight connectivity checks
+Route::get('ping', function () {
+  return response()->json([
+    'status' => 'ok',
+    'service' => 'laravel',
+    'timestamp' => now()->toISOString(),
+  ]);
+});
+
 // Public health check endpoint (no authentication required)
 Route::get('search-flashcards/health', [SearchFlashcardsController::class, 'checkHealth']);
 
