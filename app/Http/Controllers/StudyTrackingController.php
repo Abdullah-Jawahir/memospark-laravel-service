@@ -28,23 +28,31 @@ class StudyTrackingController extends Controller
     ]);
 
     $supabaseUser = $request->get('supabase_user');
-    if (!$supabaseUser || !isset($supabaseUser['email'])) {
+    if (!$supabaseUser || !isset($supabaseUser['email']) || !isset($supabaseUser['id'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
+    $supabaseUserId = (string) $supabaseUser['id'];
     // Map Supabase user to local users table (int id)
     $userRole = $supabaseUser['role'] ?? 'student';
     $appUser = User::firstOrCreate(
       ['email' => $supabaseUser['email']],
       [
+        'supabase_user_id' => $supabaseUserId,
         'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
         'user_type' => $userRole,
         'password' => null,
       ]
     );
 
-    // Update user_type if it has changed
+    $userUpdates = [];
     if ($appUser->user_type !== $userRole) {
-      $appUser->update(['user_type' => $userRole]);
+      $userUpdates['user_type'] = $userRole;
+    }
+    if (($appUser->supabase_user_id ?? null) !== $supabaseUserId) {
+      $userUpdates['supabase_user_id'] = $supabaseUserId;
+    }
+    if (!empty($userUpdates)) {
+      $appUser->update($userUpdates);
     }
     $userId = $appUser->id;
 
@@ -60,9 +68,7 @@ class StudyTrackingController extends Controller
       $deckOwnerSupabaseId = $studyMaterial->document->deck->user_id ?? null; // Supabase UUID
 
       // Prefer strict check against Supabase user id if available
-      if (!empty($supabaseUser['id'])) {
-        $ownedByUser = ($documentOwnerSupabaseId === $supabaseUser['id']) || ($deckOwnerSupabaseId === $supabaseUser['id']);
-      }
+      $ownedByUser = ($documentOwnerSupabaseId === $supabaseUserId) || ($deckOwnerSupabaseId === $supabaseUserId);
 
       // Fallback: if deck->user relation is available, also validate via local user/email mapping
       if (!$ownedByUser && $studyMaterial->document->deck && $studyMaterial->document->deck->user) {
@@ -128,12 +134,12 @@ class StudyTrackingController extends Controller
       ->get();
 
     foreach ($eligible as $achievement) {
-      $already = UserAchievement::where('user_id', $appUser->id)
+      $already = UserAchievement::where('user_id', $supabaseUserId)
         ->where('achievement_id', $achievement->id)
         ->exists();
       if (!$already) {
         UserAchievement::create([
-          'user_id' => $appUser->id,
+          'user_id' => $supabaseUserId,
           'achievement_id' => $achievement->id,
           'achieved_at' => now(),
         ]);
@@ -196,28 +202,36 @@ class StudyTrackingController extends Controller
     ]);
 
     $supabaseUser = $request->get('supabase_user');
-    if (!$supabaseUser || !isset($supabaseUser['email'])) {
+    if (!$supabaseUser || !isset($supabaseUser['email']) || !isset($supabaseUser['id'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
+    $supabaseUserId = (string) $supabaseUser['id'];
     $userRole = $supabaseUser['role'] ?? 'student';
     $appUser = User::firstOrCreate(
       ['email' => $supabaseUser['email']],
       [
+        'supabase_user_id' => $supabaseUserId,
         'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
         'user_type' => $userRole,
         'password' => null,
       ]
     );
 
-    // Update user_type if it has changed
+    $userUpdates = [];
     if ($appUser->user_type !== $userRole) {
-      $appUser->update(['user_type' => $userRole]);
+      $userUpdates['user_type'] = $userRole;
+    }
+    if (($appUser->supabase_user_id ?? null) !== $supabaseUserId) {
+      $userUpdates['supabase_user_id'] = $supabaseUserId;
+    }
+    if (!empty($userUpdates)) {
+      $appUser->update($userUpdates);
     }
     $userId = $appUser->id;
 
     $deck = $this->resolveDeckForSupabaseUser(
       $request->input('deck_id'),
-      $supabaseUser['id'] ?? null
+      $supabaseUserId
     );
 
     if (!$deck) {
@@ -279,22 +293,30 @@ class StudyTrackingController extends Controller
   public function getStats(Request $request)
   {
     $supabaseUser = $request->get('supabase_user');
-    if (!$supabaseUser || !isset($supabaseUser['email'])) {
+    if (!$supabaseUser || !isset($supabaseUser['email']) || !isset($supabaseUser['id'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
+    $supabaseUserId = (string) $supabaseUser['id'];
     $userRole = $supabaseUser['role'] ?? 'student';
     $appUser = User::firstOrCreate(
       ['email' => $supabaseUser['email']],
       [
+        'supabase_user_id' => $supabaseUserId,
         'name' => $supabaseUser['user_metadata']['full_name'] ?? ($supabaseUser['email'] ?? 'User'),
         'user_type' => $userRole,
         'password' => null,
       ]
     );
 
-    // Update user_type if it has changed
+    $userUpdates = [];
     if ($appUser->user_type !== $userRole) {
-      $appUser->update(['user_type' => $userRole]);
+      $userUpdates['user_type'] = $userRole;
+    }
+    if (($appUser->supabase_user_id ?? null) !== $supabaseUserId) {
+      $userUpdates['supabase_user_id'] = $supabaseUserId;
+    }
+    if (!empty($userUpdates)) {
+      $appUser->update($userUpdates);
     }
     $userId = $appUser->id;
 
@@ -374,9 +396,21 @@ class StudyTrackingController extends Controller
     if (!$supabaseUser || !isset($supabaseUser['id'])) {
       return response()->json(['error' => 'Supabase user not found'], 401);
     }
-    $userId = $supabaseUser['id'];
 
-    $recentActivity = FlashcardReview::where('user_id', $userId)
+    $supabaseUserId = (string) $supabaseUser['id'];
+    $localUser = User::where('supabase_user_id', $supabaseUserId)->first();
+
+    if (!$localUser && isset($supabaseUser['email'])) {
+      $localUser = User::where('email', $supabaseUser['email'])->first();
+    }
+
+    if (!$localUser) {
+      return response()->json([]);
+    }
+
+    $localUserId = $localUser->id;
+
+    $recentActivity = FlashcardReview::where('user_id', $localUserId)
       ->with(['studyMaterial.document.deck'])
       ->orderBy('reviewed_at', 'desc')
       ->take(10)
