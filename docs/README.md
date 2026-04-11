@@ -12,6 +12,7 @@ Welcome to the MemoSpark deployment documentation. This folder contains comprehe
 | [MYSQL_DATABASE_SETUP.md](./MYSQL_DATABASE_SETUP.md) | MySQL database setup and configuration on Railway |
 | [services/2026-04-11_service_gcp-cloud-run-iam-fastapi-auth.md](./services/2026-04-11_service_gcp-cloud-run-iam-fastapi-auth.md) | Laravel to FastAPI IAM-authenticated communication on Google Cloud Run |
 | [api/2026-04-11_api_dashboard-ping-and-search-review-fallback.md](./api/2026-04-11_api_dashboard-ping-and-search-review-fallback.md) | Dashboard resilience for missing search review table and public ping endpoint |
+| [api/2026-04-11_api_user-id-type-consistency-across-endpoints.md](./api/2026-04-11_api_user-id-type-consistency-across-endpoints.md) | Canonical local-vs-Supabase user ID mapping and endpoint hardening to prevent UUID cast errors |
 | [database/2026-04-11_database_idempotent-supabase-user-id-migration.md](./database/2026-04-11_database_idempotent-supabase-user-id-migration.md) | Makes users supabase user id migration safe for repeated Cloud Run startup migrations |
 
 ## Quick Start
