@@ -13,6 +13,7 @@ use App\Models\FlashcardReview;
 use App\Models\UserAchievement;
 use App\Models\StudyActivityTiming;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -27,15 +28,18 @@ class DashboardController extends Controller
         // Resolve local app user (numeric) for reviews table
         $appUser = $this->resolveLocalUser($supabaseUser);
         $localUserId = $appUser->id;
+        $searchReviewTableExists = $this->searchReviewTableExists();
 
         // Cards studied today - combine regular flashcards and search flashcards
         $regularCardsToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
 
-        $searchCardsToday = \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
+        $searchCardsToday = $searchReviewTableExists
+            ? \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
             ->whereDate('reviewed_at', $today)
-            ->count();
+            ->count()
+            : 0;
 
         $cardsStudiedToday = $regularCardsToday + $searchCardsToday;
 
@@ -45,10 +49,12 @@ class DashboardController extends Controller
             ->distinct()
             ->pluck('date');
 
-        $searchDates = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+        $searchDates = $searchReviewTableExists
+            ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
             ->selectRaw('DATE(reviewed_at) as date')
             ->distinct()
-            ->pluck('date');
+            ->pluck('date')
+            : collect();
 
         // Combine and sort dates from both types of reviews
         $allDates = $regularDates->merge($searchDates)->unique()->sort()->reverse()->values();
@@ -82,8 +88,10 @@ class DashboardController extends Controller
         $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
             ->sum('study_time');
 
-        $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
-            ->sum('study_time');
+        $searchStudyTime = $searchReviewTableExists
+            ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            ->sum('study_time')
+            : 0;
 
         // Use timing tables if available, otherwise fallback to review-based timing
         $studyTimeSeconds = $activityTimingStudyTime > 0 ? $activityTimingStudyTime : ($regularStudyTime + $searchStudyTime);
@@ -162,6 +170,7 @@ class DashboardController extends Controller
         // Resolve local user ID for regular flashcard reviews
         $appUser = $this->resolveLocalUser($supabaseUser);
         $localUserId = $appUser->id;
+        $searchReviewTableExists = $this->searchReviewTableExists();
 
         // Get goal type and set defaults
         $goalType = $goal ? $goal->goal_type : 'cards_studied';
@@ -179,9 +188,11 @@ class DashboardController extends Controller
                 ->whereDate('reviewed_at', $today)
                 ->sum('study_time');
 
-            $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            $searchStudyTime = $searchReviewTableExists
+                ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
                 ->whereDate('reviewed_at', $today)
-                ->sum('study_time');
+                ->sum('study_time')
+                : 0;
 
             // Use timing tables if available, otherwise fallback to review-based timing
             $studyTimeSeconds = $activityTimingStudyTime > 0 ? $activityTimingStudyTime : ($regularStudyTime + $searchStudyTime);
@@ -210,9 +221,11 @@ class DashboardController extends Controller
                 ->whereDate('reviewed_at', $today)
                 ->count();
 
-            $searchCardsToday = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            $searchCardsToday = $searchReviewTableExists
+                ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
                 ->whereDate('reviewed_at', $today)
-                ->count();
+                ->count()
+                : 0;
 
             $cardsStudiedToday = $regularCardsToday + $searchCardsToday;
             $remaining = max(0, $dailyGoal - $cardsStudiedToday);
@@ -306,15 +319,18 @@ class DashboardController extends Controller
 
         // Use local app user id for review stats
         $localUserId = $user->id;
+        $searchReviewTableExists = $this->searchReviewTableExists();
 
         // Cards studied today - combine regular flashcards and search flashcards
         $regularCardsToday = FlashcardReview::where('user_id', $localUserId)
             ->whereDate('reviewed_at', $today)
             ->count();
 
-        $searchCardsToday = \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
+        $searchCardsToday = $searchReviewTableExists
+            ? \App\Models\SearchFlashcardReview::where('user_id', $userId) // Search reviews use supabase user id
             ->whereDate('reviewed_at', $today)
-            ->count();
+            ->count()
+            : 0;
 
         $cardsStudiedToday = $regularCardsToday + $searchCardsToday;
 
@@ -324,10 +340,12 @@ class DashboardController extends Controller
             ->distinct()
             ->pluck('date');
 
-        $searchDates = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+        $searchDates = $searchReviewTableExists
+            ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
             ->selectRaw('DATE(reviewed_at) as date')
             ->distinct()
-            ->pluck('date');
+            ->pluck('date')
+            : collect();
 
         // Combine and sort dates from both types of reviews
         $allDates = $regularDates->merge($searchDates)->unique()->sort()->reverse()->values();
@@ -362,8 +380,10 @@ class DashboardController extends Controller
             $regularStudyTime = FlashcardReview::where('user_id', $localUserId)
                 ->sum('study_time');
 
-            $searchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
-                ->sum('study_time');
+            $searchStudyTime = $searchReviewTableExists
+                ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
+                ->sum('study_time')
+                : 0;
 
             $studyTimeSeconds = $regularStudyTime + $searchStudyTime;
             Log::info('Dashboard Main - Using fallback: Regular(' . $regularStudyTime . ') + Search(' . $searchStudyTime . ') = ' . $studyTimeSeconds);
@@ -449,9 +469,11 @@ class DashboardController extends Controller
                 ->whereDate('reviewed_at', $today)
                 ->sum('study_time');
 
-            $todaySearchStudyTime = \App\Models\SearchFlashcardReview::where('user_id', $userId)
+            $todaySearchStudyTime = $searchReviewTableExists
+                ? \App\Models\SearchFlashcardReview::where('user_id', $userId)
                 ->whereDate('reviewed_at', $today)
-                ->sum('study_time');
+                ->sum('study_time')
+                : 0;
 
             $todayStudyTimeSeconds = $todayRegularStudyTime + $todaySearchStudyTime;
         } else {
@@ -465,7 +487,7 @@ class DashboardController extends Controller
             ->where('is_active', true)
             ->with('goalType')
             ->get()
-            ->map(function ($userGoal) use ($cardsStudiedToday, $todayStudyTimeMinutes, $localUserId, $today) {
+            ->map(function ($userGoal) use ($cardsStudiedToday, $todayStudyTimeMinutes, $localUserId, $today, $searchReviewTableExists) {
             $goalCategory = $userGoal->goalType?->category;
             $goalUnit = $userGoal->goalType?->unit;
 
@@ -523,10 +545,12 @@ class DashboardController extends Controller
                         $engagementScore += intdiv($review->study_time, 30);
                     }
 
-                    // Add points from search flashcard reviews
-                    $searchReviews = \App\Models\SearchFlashcardReview::where('user_id', $userGoal->user_id)
-                        ->whereDate('reviewed_at', $today)
-                        ->get();
+                // Add points from search flashcard reviews
+                $searchReviews = $searchReviewTableExists
+                    ? \App\Models\SearchFlashcardReview::where('user_id', $userGoal->user_id)
+                    ->whereDate('reviewed_at', $today)
+                    ->get()
+                    : collect();
 
                     foreach ($searchReviews as $review) {
                         $ratingPoints = [
@@ -595,6 +619,11 @@ class DashboardController extends Controller
             ],
             'user_goals' => $userGoals
         ]);
+    }
+
+    private function searchReviewTableExists(): bool
+    {
+        return Schema::hasTable('search_flashcard_reviews');
     }
 
     private function resolveLocalUser(array $supabaseUser): User
